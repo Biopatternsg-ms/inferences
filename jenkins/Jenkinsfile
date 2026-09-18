@@ -1,0 +1,128 @@
+pipeline {
+    // Agent setup using a custom Docker image containing Java 21, Maven, and Docker CLI.
+    // The Docker socket is mounted to allow the agent to run Docker commands on the host.
+    agent {
+        docker {
+            image 'agent-jenkins-java-21'
+            args '-v /root/.m2:/root/.m2 -v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
+
+    environment {
+        CONTAINER_NAME = "${env.JOB_NAME.toLowerCase().replaceAll('[^a-z0-9-]', '-')}"
+        INFERENCES_PORT = "${env.INFERENCES_PORT ?: '8008'}"
+        INFERENCES_DATABASE = "${env.INFERENCES_DATABASE ?: 'inferences'}"
+        NETWORK = "${env.NETWORK ?: 'general-network'}"
+        MONGO_DB_URL = "${env.MONGO_DB_URL ?: 'mongodb://mongo-db-prod:27017'}"
+    }
+
+    stages {
+
+        // Stage A: Run unit tests.
+        stage('Test') {
+            steps {
+                echo "--- Running Unit Tests ---"
+                sh 'mvn test'
+            }
+        }
+
+        // Stage B: Análisis de Calidad de Código
+        stage('Code Quality Analysis') {
+            steps {
+                echo "--- Running Static Code Analysis ---"
+                // Ejecuta la fase 'verify' para activar el plugin PMD. Se usa '-DskipTests' para no repetir los tests.
+                // Se añade '|| true' para que el pipeline no se detenga si se encuentran advertencias.
+                sh 'mvn verify -DskipTests || true'
+
+                echo "--- Recording issues with Warnings NG Plugin ---"
+                recordIssues(
+                    tools: [
+                        // Indica la herramienta (PMD) y la ubicación del archivo de reporte.
+                        pmdParser(pattern: 'target/pmd.xml')
+                    ],
+                    qualityGates: [
+                        [threshold: 1, type: 'TOTAL', unstable: true]
+                    ]
+                )
+            }
+        }
+
+        // Stage C: Package the application and archive the results.
+        stage('Package & Archive') {
+            steps {
+                echo "--- Compiling and Packaging the Application ---"
+                sh 'mvn package -DskipTests'
+
+                echo "--- Stashing artifacts for the next stage ---"
+                stash name: 'quarkus-app', includes: 'target/quarkus-app/**'
+
+                echo "--- Archiving build artifacts ---"
+                archiveArtifacts artifacts: 'target/quarkus-app/**', fingerprint: true
+            }
+        }
+
+        // Stage D: Build the Docker image.
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "--- Unstashing artifacts ---"
+                    unstash 'quarkus-app'
+
+                    def localImageName = "${CONTAINER_NAME}:latest"
+
+                    echo "--- Building Local Docker Image: ${localImageName} ---"
+                    sh "docker build -t ${localImageName} ."
+                    echo "--- Docker image built successfully! ---"
+                }
+            }
+        }
+
+        // Stage E: Deploy the application as a Docker container.
+        stage('Deploy Application') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: '06a41492-8765-49c4-91f6-b759260140f0',
+                        usernameVariable: 'MONGO_USER',
+                        passwordVariable: 'MONGO_PASSWORD'
+                    )
+                ]) {
+                    script {
+                        def imageName = "${CONTAINER_NAME}:latest"
+
+                        echo "--- Deploying container: ${CONTAINER_NAME} ---"
+                        // Stop and remove the old container if it exists to avoid conflicts.
+                        sh "docker network create general-network || true"
+                        sh "docker stop ${CONTAINER_NAME} || true"
+                        sh "docker rm ${CONTAINER_NAME} || true"
+
+                        // Run the new container.
+                        sh """
+                        docker run -d \\
+                            -e DB_USER='${MONGO_USER}' \\
+                            -e DB_PASSWORD='${MONGO_PASSWORD}' \\
+                            -e DB_URL='${MONGO_DB_URL}' \\
+                            -e DB_NAME='${INFERENCES_DATABASE}' \\
+                            --name ${CONTAINER_NAME} \\
+                            -p ${INFERENCES_PORT}:8080 \\
+                            --network ${NETWORK} \\
+                            --restart always \\
+                            ${imageName}
+
+                        """
+                        echo "--- Deployment completed! ---"
+                    }
+                }
+            }
+        }
+    }
+
+    // Post-build actions that run after all stages are completed.
+    post {
+        // This block runs always, regardless of the pipeline's success or failure.
+        always {
+            echo "--- Cleaning up the workspace ---"
+            deleteDir()
+        }
+    }
+}
