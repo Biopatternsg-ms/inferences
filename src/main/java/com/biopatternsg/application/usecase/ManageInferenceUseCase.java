@@ -22,7 +22,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,14 +34,15 @@ public class ManageInferenceUseCase implements InferenceUseCase {
 
     @Override
     public Inference createInference(Inference inference) {
-        log.info("Processing inference for model: {}", inference.getModelName());
-        if (inference.getCreatedAt() == null) {
-            inference.setCreatedAt(Instant.now());
-        }
-        if (inference.getStatus() == null || inference.getStatus().isBlank()) {
-            inference.setStatus("COMPLETED");
-        }
+        log.info("Saving inference configuration for pipeline: {} with restrictionLevel: {}",
+                inference.getPipelineId(), inference.getRestrictionLevel());
         return inferenceRepository.save(inference);
+    }
+
+    @Override
+    public Optional<Inference> getByPipelineId(String pipelineId) {
+        log.info("Fetching inference configuration for pipelineId: {}", pipelineId);
+        return inferenceRepository.findByPipelineId(pipelineId);
     }
 
     @Override

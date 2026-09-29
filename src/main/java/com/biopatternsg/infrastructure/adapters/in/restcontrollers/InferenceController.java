@@ -47,10 +47,10 @@ import java.util.Map;
 @Slf4j
 @ApplicationScoped
 @RequiredArgsConstructor
-@Path("/api/inferences")
+@Path("/inferences")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@Tag(name = "Inferences", description = "Endpoints for managing model inferences")
+@Tag(name = "Inferences", description = "Endpoints for managing pipeline inferences")
 public class InferenceController {
 
     private final InferenceUseCase inferenceUseCase;
@@ -69,21 +69,39 @@ public class InferenceController {
     }
 
     @POST
-    @Operation(summary = "Create an inference record", description = "Persists a new inference execution into MongoDB")
+    @Operation(summary = "Save inference configuration", description = "Persists or updates inference restriction level for a pipeline in MongoDB")
     @APIResponses({
             @APIResponse(
                     responseCode = "201",
-                    description = "Inference created successfully",
+                    description = "Inference configuration saved successfully",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = InferenceResponseDTO.class))
             ),
             @APIResponse(responseCode = "400", description = "Invalid request payload")
     })
     public Response createInference(@Valid InferenceRequestDTO requestDTO) {
-        log.info("Received request to create inference for model: {}", requestDTO.getModelName());
+        log.info("Received request to save inference configuration for pipeline: {}", requestDTO.getPipelineId());
         Inference domainModel = inferenceMapper.toModel(requestDTO);
         Inference saved = inferenceUseCase.createInference(domainModel);
         InferenceResponseDTO responseDTO = inferenceMapper.toResponseDTO(saved);
-        return Response.created(URI.create("/api/inferences/" + responseDTO.getId())).entity(responseDTO).build();
+        return Response.created(URI.create("/inferences/" + responseDTO.getId())).entity(responseDTO).build();
+    }
+
+    @GET
+    @Path("/pipeline/{pipelineId}")
+    @Operation(summary = "Get inference configuration by pipelineId", description = "Retrieves the inference configuration associated with a pipeline")
+    @APIResponses({
+            @APIResponse(
+                    responseCode = "200",
+                    description = "Inference configuration found",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = InferenceResponseDTO.class))
+            ),
+            @APIResponse(responseCode = "404", description = "Inference configuration not found")
+    })
+    public Response getByPipelineId(@PathParam("pipelineId") String pipelineId) {
+        return inferenceUseCase.getByPipelineId(pipelineId)
+                .map(inferenceMapper::toResponseDTO)
+                .map(dto -> Response.ok(dto).build())
+                .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
     @GET

@@ -26,10 +26,10 @@ import static org.hamcrest.Matchers.equalTo;
 class InferenceControllerTest {
 
     @Test
-    @DisplayName("GET /api/inferences/ping should return 200 and status UP")
+    @DisplayName("GET /inferences/ping should return 200 and status UP")
     void testPingEndpoint() {
         given()
-                .when().get("/api/inferences/ping")
+                .when().get("/inferences/ping")
                 .then()
                 .statusCode(200)
                 .body("status", equalTo("UP"))

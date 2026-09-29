@@ -22,6 +22,7 @@ import java.util.Optional;
 
 public interface InferenceRepository {
     Inference save(Inference inference);
+    Optional<Inference> findByPipelineId(String pipelineId);
     Optional<Inference> findById(String id);
     List<Inference> findAllInferences();
 }

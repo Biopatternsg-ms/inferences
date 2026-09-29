@@ -21,19 +21,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
-import java.util.Map;
-
 @Getter
 @Setter
 @NoArgsConstructor
 @MongoEntity(collection = "inferences")
 public class InferenceCollection extends PanacheMongoEntity {
-    private String modelName;
-    private String modelVersion;
-    private String status;
-    private Map<String, Object> inputData;
-    private Map<String, Object> outputData;
-    private Double confidence;
-    private Instant createdAt;
+    private String pipelineId;
+    private String restrictionLevel;
 }

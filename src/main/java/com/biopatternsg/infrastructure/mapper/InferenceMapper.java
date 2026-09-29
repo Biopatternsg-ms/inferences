@@ -30,11 +30,8 @@ public class InferenceMapper {
             return null;
         }
         return Inference.builder()
-                .modelName(dto.getModelName())
-                .modelVersion(dto.getModelVersion())
-                .inputData(dto.getInputData())
-                .outputData(dto.getOutputData())
-                .confidence(dto.getConfidence())
+                .pipelineId(dto.getPipelineId())
+                .restrictionLevel(dto.getRestrictionLevel())
                 .build();
     }
 
@@ -44,13 +41,8 @@ public class InferenceMapper {
         }
         return InferenceResponseDTO.builder()
                 .id(model.getId())
-                .modelName(model.getModelName())
-                .modelVersion(model.getModelVersion())
-                .status(model.getStatus())
-                .inputData(model.getInputData())
-                .outputData(model.getOutputData())
-                .confidence(model.getConfidence())
-                .createdAt(model.getCreatedAt())
+                .pipelineId(model.getPipelineId())
+                .restrictionLevel(model.getRestrictionLevel())
                 .build();
     }
 
@@ -62,13 +54,8 @@ public class InferenceMapper {
         if (model.getId() != null && ObjectId.isValid(model.getId())) {
             entity.id = new ObjectId(model.getId());
         }
-        entity.setModelName(model.getModelName());
-        entity.setModelVersion(model.getModelVersion());
-        entity.setStatus(model.getStatus());
-        entity.setInputData(model.getInputData());
-        entity.setOutputData(model.getOutputData());
-        entity.setConfidence(model.getConfidence());
-        entity.setCreatedAt(model.getCreatedAt());
+        entity.setPipelineId(model.getPipelineId());
+        entity.setRestrictionLevel(model.getRestrictionLevel());
         return entity;
     }
 
@@ -78,13 +65,8 @@ public class InferenceMapper {
         }
         return Inference.builder()
                 .id(entity.id != null ? entity.id.toHexString() : null)
-                .modelName(entity.getModelName())
-                .modelVersion(entity.getModelVersion())
-                .status(entity.getStatus())
-                .inputData(entity.getInputData())
-                .outputData(entity.getOutputData())
-                .confidence(entity.getConfidence())
-                .createdAt(entity.getCreatedAt())
+                .pipelineId(entity.getPipelineId())
+                .restrictionLevel(entity.getRestrictionLevel())
                 .build();
     }
 }
