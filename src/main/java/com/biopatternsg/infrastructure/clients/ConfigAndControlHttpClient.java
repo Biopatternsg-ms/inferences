@@ -13,16 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.domain.port.in;
+package com.biopatternsg.infrastructure.clients;
 
-import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.infrastructure.dtos.PipelineStepRequest;
+import jakarta.ws.rs.HeaderParam;
+import jakarta.ws.rs.PATCH;
+import jakarta.ws.rs.Path;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 
-import java.util.List;
-import java.util.Optional;
+@RegisterRestClient(configKey = "config-and-control-api")
+public interface ConfigAndControlHttpClient {
 
-public interface InferenceUseCase {
-    Inference createInference(Inference inference, String userId);
-    Optional<Inference> getByPipelineId(String pipelineId);
-    Optional<Inference> getInferenceById(String id);
-    List<Inference> getAllInferences();
+    @PATCH
+    @Path("/config-and-control/pipelines/update-step")
+    void updateStep(PipelineStepRequest stepRequest, @HeaderParam("x-user-id") String userId);
 }

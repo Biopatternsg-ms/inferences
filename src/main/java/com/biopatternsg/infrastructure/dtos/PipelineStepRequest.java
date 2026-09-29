@@ -13,16 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.domain.port.in;
+package com.biopatternsg.infrastructure.dtos;
 
-import com.biopatternsg.domain.model.Inference;
+import java.util.Map;
 
-import java.util.List;
-import java.util.Optional;
-
-public interface InferenceUseCase {
-    Inference createInference(Inference inference, String userId);
-    Optional<Inference> getByPipelineId(String pipelineId);
-    Optional<Inference> getInferenceById(String id);
-    List<Inference> getAllInferences();
+public record PipelineStepRequest(
+        String id,
+        String step,
+        String status,
+        Map<String, String> metrics
+) {
 }

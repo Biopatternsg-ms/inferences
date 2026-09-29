@@ -16,6 +16,7 @@
 package com.biopatternsg.application.usecase;
 
 import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -40,6 +42,9 @@ class ManageInferenceUseCaseTest {
 
     @Mock
     private InferenceRepository inferenceRepository;
+
+    @Mock
+    private ConfigAndControlRepository configAndControlRepository;
 
     @InjectMocks
     private ManageInferenceUseCase manageInferenceUseCase;
@@ -56,7 +61,7 @@ class ManageInferenceUseCaseTest {
     }
 
     @Test
-    @DisplayName("createInference saves inference configuration")
+    @DisplayName("createInference saves inference configuration and updates pipeline step")
     void testCreateInference() {
         when(inferenceRepository.save(any(Inference.class))).thenReturn(sampleInference);
 
@@ -65,12 +70,19 @@ class ManageInferenceUseCaseTest {
                 .restrictionLevel("RESTRICTED")
                 .build();
 
-        Inference created = manageInferenceUseCase.createInference(input);
+        Inference created = manageInferenceUseCase.createInference(input, "user-123");
 
         assertNotNull(created);
         assertEquals("pipeline-123", created.getPipelineId());
         assertEquals("RESTRICTED", created.getRestrictionLevel());
         verify(inferenceRepository).save(any(Inference.class));
+        verify(configAndControlRepository).updateStep(
+                "pipeline-123",
+                "CONFIGURE_INFERENCES",
+                "COMPLETED",
+                "user-123",
+                Map.of("Restriction Level", "RESTRICTED")
+        );
     }
 
     @Test

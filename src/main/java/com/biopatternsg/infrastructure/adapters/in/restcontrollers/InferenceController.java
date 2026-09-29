@@ -24,6 +24,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -78,10 +79,10 @@ public class InferenceController {
             ),
             @APIResponse(responseCode = "400", description = "Invalid request payload")
     })
-    public Response createInference(@Valid InferenceRequestDTO requestDTO) {
+    public Response createInference(@Valid InferenceRequestDTO requestDTO, @HeaderParam("x-user-id") String userId) {
         log.info("Received request to save inference configuration for pipeline: {}", requestDTO.getPipelineId());
         Inference domainModel = inferenceMapper.toModel(requestDTO);
-        Inference saved = inferenceUseCase.createInference(domainModel);
+        Inference saved = inferenceUseCase.createInference(domainModel, userId);
         InferenceResponseDTO responseDTO = inferenceMapper.toResponseDTO(saved);
         return Response.created(URI.create("/inferences/" + responseDTO.getId())).entity(responseDTO).build();
     }

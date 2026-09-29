@@ -17,12 +17,14 @@ package com.biopatternsg.application.usecase;
 
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.port.in.InferenceUseCase;
+import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Slf4j
@@ -31,12 +33,21 @@ import java.util.Optional;
 public class ManageInferenceUseCase implements InferenceUseCase {
 
     private final InferenceRepository inferenceRepository;
+    private final ConfigAndControlRepository configAndControlRepository;
 
     @Override
-    public Inference createInference(Inference inference) {
+    public Inference createInference(Inference inference, String userId) {
         log.info("Saving inference configuration for pipeline: {} with restrictionLevel: {}",
                 inference.getPipelineId(), inference.getRestrictionLevel());
-        return inferenceRepository.save(inference);
+        Inference saved = inferenceRepository.save(inference);
+        configAndControlRepository.updateStep(
+                inference.getPipelineId(),
+                "CONFIGURE_INFERENCES",
+                "COMPLETED",
+                userId,
+                Map.of("Restriction Level", inference.getRestrictionLevel())
+        );
+        return saved;
     }
 
     @Override
