@@ -13,25 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.infrastructure.dtos;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+package com.biopatternsg.domain.port.out.repositories;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InferenceResponseDTO {
-    private String id;
-    private String pipelineId;
-    private String restrictionLevel;
-    private Map<String, List<String>> roles;
+public interface OntologiesRepository {
+    Optional<String> searchMeshId(List<String> synonyms);
+    Map<String, Boolean> checkAllTypes(String meshId);
 }

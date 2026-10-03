@@ -13,25 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.infrastructure.dtos;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+package com.biopatternsg.domain.port.in;
 
 import java.util.List;
-import java.util.Map;
 
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InferenceResponseDTO {
-    private String id;
-    private String pipelineId;
-    private String restrictionLevel;
-    private Map<String, List<String>> roles;
+public interface FindRoles {
+    void execute(String pipelineId, List<String> alignedObjects, String userId);
 }

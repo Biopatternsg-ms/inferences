@@ -38,6 +38,7 @@ public class InferenceRepositoryAdapter implements InferenceRepository, PanacheM
         InferenceCollection existing = find("pipelineId", inference.getPipelineId()).firstResult();
         if (existing != null) {
             existing.setRestrictionLevel(inference.getRestrictionLevel());
+            existing.setRoles(inference.getRoles());
             update(existing);
             return inferenceMapper.toModel(existing);
         }

@@ -15,6 +15,7 @@
  */
 package com.biopatternsg.infrastructure.dtos;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -22,16 +23,15 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.List;
-import java.util.Map;
 
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InferenceResponseDTO {
-    private String id;
+public class FindRolesRequestDTO {
+    @NotBlank(message = "pipelineId is required")
     private String pipelineId;
-    private String restrictionLevel;
-    private Map<String, List<String>> roles;
+
+    private List<String> alignedObjects;
 }
