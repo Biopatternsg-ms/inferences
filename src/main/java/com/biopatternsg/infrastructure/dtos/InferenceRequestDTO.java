@@ -22,18 +22,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.Map;
-
 @Getter
 @Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class InferenceRequestDTO {
-    @NotBlank(message = "modelName is required")
-    private String modelName;
-    private String modelVersion;
-    private Map<String, Object> inputData;
-    private Map<String, Object> outputData;
-    private Double confidence;
+    @NotBlank(message = "pipelineId is required")
+    private String pipelineId;
+
+    @NotBlank(message = "restrictionLevel is required")
+    private String restrictionLevel;
 }

@@ -35,9 +35,24 @@ public class InferenceRepositoryAdapter implements InferenceRepository, PanacheM
 
     @Override
     public Inference save(Inference inference) {
+        InferenceCollection existing = find("pipelineId", inference.getPipelineId()).firstResult();
+        if (existing != null) {
+            existing.setRestrictionLevel(inference.getRestrictionLevel());
+            update(existing);
+            return inferenceMapper.toModel(existing);
+        }
         InferenceCollection entity = inferenceMapper.toEntity(inference);
         persistOrUpdate(entity);
         return inferenceMapper.toModel(entity);
+    }
+
+    @Override
+    public Optional<Inference> findByPipelineId(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Optional.empty();
+        }
+        InferenceCollection entity = find("pipelineId", pipelineId).firstResult();
+        return Optional.ofNullable(entity).map(inferenceMapper::toModel);
     }
 
     @Override

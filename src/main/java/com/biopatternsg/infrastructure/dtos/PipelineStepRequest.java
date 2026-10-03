@@ -13,19 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.infrastructure.mongo;
+package com.biopatternsg.infrastructure.dtos;
 
-import io.quarkus.mongodb.panache.PanacheMongoEntity;
-import io.quarkus.mongodb.panache.common.MongoEntity;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import java.util.Map;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@MongoEntity(collection = "inferences")
-public class InferenceCollection extends PanacheMongoEntity {
-    private String pipelineId;
-    private String restrictionLevel;
+public record PipelineStepRequest(
+        String id,
+        String step,
+        String status,
+        Map<String, String> metrics
+) {
 }

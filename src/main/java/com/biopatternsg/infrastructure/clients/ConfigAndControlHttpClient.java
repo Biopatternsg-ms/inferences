@@ -13,19 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.infrastructure.mongo;
+package com.biopatternsg.infrastructure.clients;
 
-import io.quarkus.mongodb.panache.PanacheMongoEntity;
-import io.quarkus.mongodb.panache.common.MongoEntity;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.biopatternsg.infrastructure.dtos.PipelineStepRequest;
+import jakarta.ws.rs.HeaderParam;
+import jakarta.ws.rs.PATCH;
+import jakarta.ws.rs.Path;
+import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@MongoEntity(collection = "inferences")
-public class InferenceCollection extends PanacheMongoEntity {
-    private String pipelineId;
-    private String restrictionLevel;
+@RegisterRestClient(configKey = "config-and-control-api")
+public interface ConfigAndControlHttpClient {
+
+    @PATCH
+    @Path("/config-and-control/pipelines/update-step")
+    void updateStep(PipelineStepRequest stepRequest, @HeaderParam("x-user-id") String userId);
 }
