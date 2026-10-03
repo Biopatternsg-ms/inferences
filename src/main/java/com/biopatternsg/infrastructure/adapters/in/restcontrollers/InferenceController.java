@@ -16,7 +16,9 @@
 package com.biopatternsg.infrastructure.adapters.in.restcontrollers;
 
 import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.in.InferenceUseCase;
+import com.biopatternsg.infrastructure.dtos.FindRolesRequestDTO;
 import com.biopatternsg.infrastructure.dtos.InferenceRequestDTO;
 import com.biopatternsg.infrastructure.dtos.InferenceResponseDTO;
 import com.biopatternsg.infrastructure.mapper.InferenceMapper;
@@ -33,6 +35,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.context.ManagedExecutor;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -44,6 +47,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @ApplicationScoped
@@ -56,6 +60,35 @@ public class InferenceController {
 
     private final InferenceUseCase inferenceUseCase;
     private final InferenceMapper inferenceMapper;
+    private final FindRoles findRoles;
+    private final ManagedExecutor executor;
+
+    @POST
+    @Path("/find-roles")
+    @Operation(summary = "Find biological roles for aligned objects", description = "Triggers the identification of biological roles using MeSH ontology")
+    @APIResponses({
+            @APIResponse(
+                    responseCode = "202",
+                    description = "Find roles process initiated successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = Map.class))
+            ),
+            @APIResponse(responseCode = "400", description = "Invalid request payload")
+    })
+    public Response findRoles(@Valid FindRolesRequestDTO requestDTO, @HeaderParam("x-user-id") String userId) {
+        log.info("Received request to find roles for pipeline: {}", requestDTO.getPipelineId());
+        CompletableFuture.runAsync(() -> {
+            try {
+                findRoles.execute(requestDTO.getPipelineId(), requestDTO.getAlignedObjects(), userId);
+            } catch (Exception e) {
+                log.error("Error executing findRoles asynchronously for pipeline: {}", requestDTO.getPipelineId(), e);
+            }
+        }, executor);
+
+        return Response.accepted(Map.of(
+                "message", "Find roles process initiated",
+                "pipelineId", requestDTO.getPipelineId()
+        )).build();
+    }
 
     @GET
     @Path("/ping")

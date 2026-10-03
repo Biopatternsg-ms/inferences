@@ -1,0 +1,234 @@
+/*
+ * Copyright © 2026 biopatternsg (biopatternsg@gmail.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.biopatternsg.application.usecase;
+
+import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
+import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
+import com.biopatternsg.domain.port.out.repositories.OntologiesRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class FindRolesUseCaseTest {
+
+    @Mock
+    private InferenceRepository inferenceRepository;
+
+    @Mock
+    private OntologiesRepository ontologiesRepository;
+
+    @Mock
+    private ConfigAndControlRepository configAndControlRepository;
+
+    @InjectMocks
+    private FindRolesUseCase findRolesUseCase;
+
+    private Inference veryRestrictedInference;
+    private Inference restrictedInference;
+
+    @BeforeEach
+    void setUp() {
+        veryRestrictedInference = Inference.builder()
+                .id("60c72b2f9b1d8b2bad000001")
+                .pipelineId("pipeline-123")
+                .restrictionLevel("VERY_RESTRICTED")
+                .build();
+
+        restrictedInference = Inference.builder()
+                .id("60c72b2f9b1d8b2bad000002")
+                .pipelineId("pipeline-456")
+                .restrictionLevel("RESTRICTED")
+                .build();
+    }
+
+    @Test
+    @DisplayName("execute for VERY_RESTRICTED queries MeSH IDs and evaluates categories for found terms")
+    void testExecute_VeryRestricted_Success() {
+        when(inferenceRepository.findByPipelineId("pipeline-123")).thenReturn(Optional.of(veryRestrictedInference));
+
+        List<String> alignedObjects = List.of("BRCA1", "UNKNOWN_ENTITY", "TP53");
+
+        when(ontologiesRepository.searchMeshId(List.of("BRCA1"))).thenReturn(Optional.of("D019084"));
+        when(ontologiesRepository.searchMeshId(List.of("UNKNOWN_ENTITY"))).thenReturn(Optional.empty());
+        when(ontologiesRepository.searchMeshId(List.of("TP53"))).thenReturn(Optional.of("D016159"));
+
+        Map<String, Boolean> brca1Categories = Map.of(
+                "PROTEIN", true,
+                "ENZYME", false,
+                "RECEPTOR", false,
+                "LIGAND", false,
+                "TRANSCRIPTION_FACTOR", false,
+                "ADAPTOR_PROTEIN", false
+        );
+        Map<String, Boolean> tp53Categories = Map.of(
+                "PROTEIN", true,
+                "ENZYME", false,
+                "RECEPTOR", false,
+                "LIGAND", false,
+                "TRANSCRIPTION_FACTOR", true,
+                "ADAPTOR_PROTEIN", false
+        );
+
+        when(ontologiesRepository.checkAllTypes("D019084")).thenReturn(brca1Categories);
+        when(ontologiesRepository.checkAllTypes("D016159")).thenReturn(tp53Categories);
+
+        findRolesUseCase.execute("pipeline-123", alignedObjects, "user-123");
+
+        ArgumentCaptor<Inference> inferenceCaptor = ArgumentCaptor.forClass(Inference.class);
+        verify(inferenceRepository).save(inferenceCaptor.capture());
+
+        Inference saved = inferenceCaptor.getValue();
+        assertNotNull(saved.getRoles());
+        assertEquals(2, saved.getRoles().size());
+        assertEquals(List.of("PROTEIN"), saved.getRoles().get("BRCA1"));
+        assertEquals(List.of("PROTEIN", "TRANSCRIPTION_FACTOR"), saved.getRoles().get("TP53"));
+        assertFalse(saved.getRoles().containsKey("UNKNOWN_ENTITY"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metricsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-123"),
+                eq("FIND_ROLES"),
+                eq("COMPLETED"),
+                eq("user-123"),
+                metricsCaptor.capture()
+        );
+
+        Map<String, String> capturedMetrics = metricsCaptor.getValue();
+        assertEquals("VERY_RESTRICTED", capturedMetrics.get("restrictionLevel"));
+        assertEquals("3", capturedMetrics.get("totalAlignedObjects"));
+        assertEquals("2", capturedMetrics.get("meshIdsFound"));
+        assertEquals("2", capturedMetrics.get("rolesIdentified"));
+        assertEquals("2", capturedMetrics.get("entitiesWithActiveRoles"));
+    }
+
+    @Test
+    @DisplayName("execute for VERY_RESTRICTED deduplicates aligned objects to avoid redundant network calls")
+    void testExecute_VeryRestricted_DeduplicatesSymbols() {
+        when(inferenceRepository.findByPipelineId("pipeline-123")).thenReturn(Optional.of(veryRestrictedInference));
+
+        List<String> duplicateAlignedObjects = List.of("BRCA1", "BRCA1", "  BRCA1  ", "TP53");
+
+        when(ontologiesRepository.searchMeshId(List.of("BRCA1"))).thenReturn(Optional.of("D019084"));
+        when(ontologiesRepository.searchMeshId(List.of("TP53"))).thenReturn(Optional.of("D016159"));
+
+        when(ontologiesRepository.checkAllTypes("D019084")).thenReturn(Map.of("PROTEIN", true));
+        when(ontologiesRepository.checkAllTypes("D016159")).thenReturn(Map.of("PROTEIN", true));
+
+        findRolesUseCase.execute("pipeline-123", duplicateAlignedObjects, "user-123");
+
+        // Verify searchMeshId was called only ONCE for BRCA1 despite 3 occurrences
+        verify(ontologiesRepository, times(1)).searchMeshId(List.of("BRCA1"));
+        verify(ontologiesRepository, times(1)).searchMeshId(List.of("TP53"));
+        verify(ontologiesRepository, times(1)).checkAllTypes("D019084");
+        verify(ontologiesRepository, times(1)).checkAllTypes("D016159");
+    }
+
+    @Test
+    @DisplayName("execute for RESTRICTED skips role evaluation and completes step")
+    void testExecute_Restricted_SkipsRoleCheck() {
+        when(inferenceRepository.findByPipelineId("pipeline-456")).thenReturn(Optional.of(restrictedInference));
+
+        findRolesUseCase.execute("pipeline-456", List.of("BRCA1"), "user-123");
+
+        verifyNoInteractions(ontologiesRepository);
+        verify(inferenceRepository, never()).save(any());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metricsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-456"),
+                eq("FIND_ROLES"),
+                eq("COMPLETED"),
+                eq("user-123"),
+                metricsCaptor.capture()
+        );
+
+        Map<String, String> capturedMetrics = metricsCaptor.getValue();
+        assertEquals("RESTRICTED", capturedMetrics.get("restrictionLevel"));
+        assertTrue(capturedMetrics.get("statusMessage").contains("deferred"));
+    }
+
+    @Test
+    @DisplayName("execute for NO_RESTRICTED skips role evaluation and completes step")
+    void testExecute_NoRestricted_SkipsRoleCheck() {
+        Inference noRestricted = Inference.builder()
+                .pipelineId("pipeline-789")
+                .restrictionLevel("NO_RESTRICTED")
+                .build();
+        when(inferenceRepository.findByPipelineId("pipeline-789")).thenReturn(Optional.of(noRestricted));
+
+        findRolesUseCase.execute("pipeline-789", List.of("BRCA1"), "user-123");
+
+        verifyNoInteractions(ontologiesRepository);
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-789"),
+                eq("FIND_ROLES"),
+                eq("COMPLETED"),
+                eq("user-123"),
+                anyMap()
+        );
+    }
+
+    @Test
+    @DisplayName("execute when pipeline inference configuration not found marks step as FAILED")
+    void testExecute_InferenceNotFound_MarksFailed() {
+        when(inferenceRepository.findByPipelineId("unknown-pipeline")).thenReturn(Optional.empty());
+
+        findRolesUseCase.execute("unknown-pipeline", List.of("BRCA1"), "user-123");
+
+        verify(configAndControlRepository).updateStep(
+                eq("unknown-pipeline"),
+                eq("FIND_ROLES"),
+                eq("FAILED"),
+                eq("user-123"),
+                argThat(metrics -> metrics.containsKey("error"))
+        );
+    }
+
+    @Test
+    @DisplayName("execute handles unexpected exceptions by marking step as FAILED")
+    void testExecute_UnexpectedException_MarksFailed() {
+        when(inferenceRepository.findByPipelineId("pipeline-123")).thenReturn(Optional.of(veryRestrictedInference));
+        when(ontologiesRepository.searchMeshId(anyList())).thenThrow(new RuntimeException("Network down"));
+
+        findRolesUseCase.execute("pipeline-123", List.of("BRCA1"), "user-123");
+
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-123"),
+                eq("FIND_ROLES"),
+                eq("FAILED"),
+                eq("user-123"),
+                argThat(metrics -> metrics.containsKey("error"))
+        );
+    }
+}

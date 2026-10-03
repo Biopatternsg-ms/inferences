@@ -15,23 +15,9 @@
  */
 package com.biopatternsg.infrastructure.dtos;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import jakarta.validation.constraints.NotBlank;
 
-import java.util.List;
-import java.util.Map;
-
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InferenceResponseDTO {
-    private String id;
-    private String pipelineId;
-    private String restrictionLevel;
-    private Map<String, List<String>> roles;
+public record CheckAllMeshTypesRequest(
+        @NotBlank String meshId
+) {
 }

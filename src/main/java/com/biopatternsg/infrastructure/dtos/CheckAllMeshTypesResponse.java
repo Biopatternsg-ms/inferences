@@ -15,23 +15,10 @@
  */
 package com.biopatternsg.infrastructure.dtos;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-
-import java.util.List;
 import java.util.Map;
 
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class InferenceResponseDTO {
-    private String id;
-    private String pipelineId;
-    private String restrictionLevel;
-    private Map<String, List<String>> roles;
+public record CheckAllMeshTypesResponse(
+        String meshId,
+        Map<String, Boolean> categories
+) {
 }
