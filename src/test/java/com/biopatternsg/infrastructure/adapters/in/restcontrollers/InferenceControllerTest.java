@@ -35,4 +35,40 @@ class InferenceControllerTest {
                 .body("status", equalTo("UP"))
                 .body("service", equalTo("inferences"));
     }
+
+    @Test
+    @DisplayName("POST /inferences/find-roles should return 202 when request is valid")
+    void testFindRoles_Accepted() {
+        given()
+                .contentType("application/json")
+                .header("x-user-id", "test-user-1")
+                .body("""
+                        {
+                            "pipelineId": "pipeline-test-123",
+                            "alignedObjects": ["BRCA1", "TP53"]
+                        }
+                        """)
+                .when().post("/inferences/find-roles")
+                .then()
+                .statusCode(202)
+                .body("message", equalTo("Find roles process initiated"))
+                .body("pipelineId", equalTo("pipeline-test-123"));
+    }
+
+    @Test
+    @DisplayName("POST /inferences/find-roles should return 400 when pipelineId is blank")
+    void testFindRoles_BadRequestWhenPipelineIdBlank() {
+        given()
+                .contentType("application/json")
+                .header("x-user-id", "test-user-1")
+                .body("""
+                        {
+                            "pipelineId": "",
+                            "alignedObjects": ["BRCA1"]
+                        }
+                        """)
+                .when().post("/inferences/find-roles")
+                .then()
+                .statusCode(400);
+    }
 }
