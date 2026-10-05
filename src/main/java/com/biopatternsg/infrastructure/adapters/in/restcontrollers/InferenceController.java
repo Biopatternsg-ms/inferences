@@ -75,7 +75,9 @@ public class InferenceController {
             @APIResponse(responseCode = "400", description = "Invalid request payload")
     })
     public Response findRoles(@Valid FindRolesRequestDTO requestDTO, @HeaderParam("x-user-id") String userId) {
-        log.info("Received request to find roles for pipeline: {}", requestDTO.getPipelineId());
+        int objectsCount = (requestDTO.getAlignedObjects() != null) ? requestDTO.getAlignedObjects().size() : 0;
+        log.info("Received request to find roles for pipeline: {} with {} aligned objects",
+                requestDTO.getPipelineId(), objectsCount);
         CompletableFuture.runAsync(() -> {
             try {
                 findRoles.execute(requestDTO.getPipelineId(), requestDTO.getAlignedObjects(), userId);
