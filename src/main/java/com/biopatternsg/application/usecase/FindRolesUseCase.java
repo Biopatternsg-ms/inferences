@@ -100,16 +100,23 @@ public class FindRolesUseCase implements FindRoles {
                         .toList()
                 : Collections.emptyList();
 
+        log.info("Pipeline {}: evaluating {} aligned objects (distinct: {}, symbols: {})",
+                pipelineId, totalObjects, distinctSymbols.size(), distinctSymbols);
+
+        if (distinctSymbols.isEmpty()) {
+            log.warn("Pipeline {}: No valid symbols found to evaluate in alignedObjects", pipelineId);
+        }
+
         for (String symbol : distinctSymbols) {
             Optional<String> meshIdOpt = ontologiesRepository.searchMeshId(List.of(symbol));
             if (meshIdOpt.isEmpty()) {
-                log.debug("Symbol '{}' has no matching MeSH ID, skipping role check", symbol);
+                log.info("Symbol '{}' has no matching MeSH ID in ontologies, skipping role check", symbol);
                 continue;
             }
 
             String meshId = meshIdOpt.get();
             foundMeshIds++;
-            log.debug("Symbol '{}' matched MeSH ID '{}', querying check-all-types", symbol, meshId);
+            log.info("Symbol '{}' matched MeSH ID '{}', querying check-all-types", symbol, meshId);
 
             Map<String, Boolean> categories = ontologiesRepository.checkAllTypes(meshId);
             if (categories != null && !categories.isEmpty()) {
@@ -122,6 +129,9 @@ public class FindRolesUseCase implements FindRoles {
                 if (!activeRoles.isEmpty()) {
                     entitiesWithRoles++;
                 }
+                log.info("Symbol '{}' (MeSH: {}) active roles: {}", symbol, meshId, activeRoles);
+            } else {
+                log.info("Symbol '{}' (MeSH: {}) returned no active categories", symbol, meshId);
             }
         }
 
