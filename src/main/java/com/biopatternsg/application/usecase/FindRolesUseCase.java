@@ -16,19 +16,25 @@
 package com.biopatternsg.application.usecase;
 
 import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.domain.model.KbEvent;
+import com.biopatternsg.domain.model.RoleEvaluationSummary;
 import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.OntologiesRepository;
+import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @ApplicationScoped
@@ -39,9 +45,11 @@ public class FindRolesUseCase implements FindRoles {
     private static final String STATUS_COMPLETED = "COMPLETED";
     private static final String STATUS_FAILED = "FAILED";
     private static final String VERY_RESTRICTED = "VERY_RESTRICTED";
+    private static final String RESTRICTED = "RESTRICTED";
 
     private final InferenceRepository inferenceRepository;
     private final OntologiesRepository ontologiesRepository;
+    private final PubmedIntegrationRepository pubmedIntegrationRepository;
     private final ConfigAndControlRepository configAndControlRepository;
 
     @Override
@@ -68,6 +76,8 @@ public class FindRolesUseCase implements FindRoles {
 
             if (VERY_RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
                 processVeryRestricted(inference, alignedObjects, userId);
+            } else if (RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
+                processRestricted(inference, alignedObjects, userId);
             } else {
                 processOtherRestrictionLevels(inference, userId);
             }
@@ -86,11 +96,7 @@ public class FindRolesUseCase implements FindRoles {
 
     private void processVeryRestricted(Inference inference, List<String> alignedObjects, String userId) {
         String pipelineId = inference.getPipelineId();
-        Map<String, List<String>> roles = new LinkedHashMap<>();
-
         int totalObjects = (alignedObjects != null) ? alignedObjects.size() : 0;
-        int foundMeshIds = 0;
-        int entitiesWithRoles = 0;
 
         List<String> distinctSymbols = (alignedObjects != null)
                 ? alignedObjects.stream()
@@ -107,7 +113,125 @@ public class FindRolesUseCase implements FindRoles {
             log.warn("Pipeline {}: No valid symbols found to evaluate in alignedObjects", pipelineId);
         }
 
-        for (String symbol : distinctSymbols) {
+        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(pipelineId, distinctSymbols);
+
+        inference.setRoles(evalResult.roles());
+        inferenceRepository.save(inference);
+        log.info("Pipeline {} roles evaluated. Found {} MeSH IDs, recorded {} entities with categories",
+                pipelineId, evalResult.foundMeshIds(), evalResult.roles().size());
+
+        Map<String, String> metrics = getStringStringMap(inference, totalObjects, evalResult);
+
+        configAndControlRepository.updateStep(
+                pipelineId,
+                STEP_FIND_ROLES,
+                STATUS_COMPLETED,
+                userId,
+                metrics
+        );
+    }
+
+    private static Map<String, String> getStringStringMap(Inference inference, int totalObjects, RoleEvaluationSummary evalResult) {
+        Map<String, String> metrics = new LinkedHashMap<>();
+        metrics.put("restrictionLevel", inference.getRestrictionLevel());
+        metrics.put("totalAlignedObjects", String.valueOf(totalObjects));
+        metrics.put("meshIdsFound", String.valueOf(evalResult.foundMeshIds()));
+        metrics.put("rolesIdentified", String.valueOf(evalResult.roles().size()));
+        metrics.put("entitiesWithActiveRoles", String.valueOf(evalResult.entitiesWithActiveRoles()));
+        metrics.put("statusMessage", "Biological roles identified successfully");
+        return metrics;
+    }
+
+    private void processRestricted(Inference inference, List<String> alignedObjects, String userId) {
+        String pipelineId = inference.getPipelineId();
+        int totalBaseObjects = (alignedObjects != null) ? alignedObjects.size() : 0;
+
+        List<String> baseSymbols = (alignedObjects != null)
+                ? alignedObjects.stream()
+                        .filter(s -> s != null && !s.isBlank())
+                        .map(String::trim)
+                        .distinct()
+                        .toList()
+                : Collections.emptyList();
+
+        log.info("Pipeline {}: starting RESTRICTED evaluation with {} base objects (distinct: {})",
+                pipelineId, totalBaseObjects, baseSymbols.size());
+
+        // Case-insensitive map preserving canonical symbol representation and insertion order
+        Map<String, String> canonicalSymbols = new LinkedHashMap<>();
+        for (String base : baseSymbols) {
+            canonicalSymbols.put(base.toUpperCase(), base);
+        }
+        Set<String> coOccurringSymbols = new LinkedHashSet<>();
+
+        for (String baseSymbol : baseSymbols) {
+            log.info("Pipeline {}: fetching biological events for base symbol '{}'", pipelineId, baseSymbol);
+            List<KbEvent> events = pubmedIntegrationRepository.getEventsByTerm(pipelineId, baseSymbol);
+
+            if (events == null || events.isEmpty()) {
+                log.info("Pipeline {}: no biological events found for base symbol '{}'", pipelineId, baseSymbol);
+                continue;
+            }
+
+            log.info("Pipeline {}: found {} events for base symbol '{}'", pipelineId, events.size(), baseSymbol);
+            for (KbEvent event : events) {
+                String first = event.first() != null ? event.first().trim() : "";
+                String second = event.second() != null ? event.second().trim() : "";
+
+                if (!first.isBlank() && !first.equalsIgnoreCase(baseSymbol)) {
+                    String upperFirst = first.toUpperCase();
+                    if (!canonicalSymbols.containsKey(upperFirst)) {
+                        canonicalSymbols.put(upperFirst, first);
+                        coOccurringSymbols.add(first);
+                    }
+                }
+                if (!second.isBlank() && !second.equalsIgnoreCase(baseSymbol)) {
+                    String upperSecond = second.toUpperCase();
+                    if (!canonicalSymbols.containsKey(upperSecond)) {
+                        canonicalSymbols.put(upperSecond, second);
+                        coOccurringSymbols.add(second);
+                    }
+                }
+            }
+        }
+
+        List<String> distinctSymbols = new ArrayList<>(canonicalSymbols.values());
+        log.info("Pipeline {}: RESTRICTED evaluation pool prepared: {} base objects, {} co-occurring objects, {} total to evaluate: {}",
+                pipelineId, baseSymbols.size(), coOccurringSymbols.size(), distinctSymbols.size(), distinctSymbols);
+
+        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(pipelineId, distinctSymbols);
+
+        inference.setRoles(evalResult.roles());
+        inferenceRepository.save(inference);
+        log.info("Pipeline {} RESTRICTED roles evaluated. Found {} MeSH IDs, recorded {} entities with categories",
+                pipelineId, evalResult.foundMeshIds(), evalResult.roles().size());
+
+        Map<String, String> metrics = new LinkedHashMap<>();
+        metrics.put("restrictionLevel", inference.getRestrictionLevel());
+        metrics.put("totalAlignedObjects", String.valueOf(totalBaseObjects));
+        metrics.put("coOccurringObjectsFound", String.valueOf(coOccurringSymbols.size()));
+        metrics.put("totalEvaluatedObjects", String.valueOf(distinctSymbols.size()));
+        metrics.put("meshIdsFound", String.valueOf(evalResult.foundMeshIds()));
+        metrics.put("rolesIdentified", String.valueOf(evalResult.roles().size()));
+        metrics.put("entitiesWithActiveRoles", String.valueOf(evalResult.entitiesWithActiveRoles()));
+        metrics.put("statusMessage", "Biological roles identified successfully for RESTRICTED level");
+
+        configAndControlRepository.updateStep(
+                pipelineId,
+                STEP_FIND_ROLES,
+                STATUS_COMPLETED,
+                userId,
+                metrics
+        );
+    }
+
+    private RoleEvaluationSummary evaluateRolesForSymbols(String pipelineId, List<String> symbols) {
+        Map<String, List<String>> roles = new LinkedHashMap<>();
+        Map<String, Map<String, Boolean>> localMeshCache = new LinkedHashMap<>();
+        int foundMeshIds = 0;
+        int entitiesWithRoles = 0;
+
+        for (String symbol : symbols) {
             Optional<String> meshIdOpt = ontologiesRepository.searchMeshId(List.of(symbol));
             if (meshIdOpt.isEmpty()) {
                 log.info("Symbol '{}' has no matching MeSH ID in ontologies, skipping role check", symbol);
@@ -118,7 +242,10 @@ public class FindRolesUseCase implements FindRoles {
             foundMeshIds++;
             log.info("Symbol '{}' matched MeSH ID '{}', querying check-all-types", symbol, meshId);
 
-            Map<String, Boolean> categories = ontologiesRepository.checkAllTypes(meshId);
+            Map<String, Boolean> categories = localMeshCache.computeIfAbsent(
+                    meshId,
+                    ontologiesRepository::checkAllTypes
+            );
             if (categories != null && !categories.isEmpty()) {
                 List<String> activeRoles = categories.entrySet().stream()
                         .filter(Map.Entry::getValue)
@@ -135,26 +262,7 @@ public class FindRolesUseCase implements FindRoles {
             }
         }
 
-        inference.setRoles(roles);
-        inferenceRepository.save(inference);
-        log.info("Pipeline {} roles evaluated. Found {} MeSH IDs, recorded {} entities with categories",
-                pipelineId, foundMeshIds, roles.size());
-
-        Map<String, String> metrics = new LinkedHashMap<>();
-        metrics.put("restrictionLevel", inference.getRestrictionLevel());
-        metrics.put("totalAlignedObjects", String.valueOf(totalObjects));
-        metrics.put("meshIdsFound", String.valueOf(foundMeshIds));
-        metrics.put("rolesIdentified", String.valueOf(roles.size()));
-        metrics.put("entitiesWithActiveRoles", String.valueOf(entitiesWithRoles));
-        metrics.put("statusMessage", "Biological roles identified successfully");
-
-        configAndControlRepository.updateStep(
-                pipelineId,
-                STEP_FIND_ROLES,
-                STATUS_COMPLETED,
-                userId,
-                metrics
-        );
+        return new RoleEvaluationSummary(roles, foundMeshIds, entitiesWithRoles);
     }
 
     private void processOtherRestrictionLevels(Inference inference, String userId) {
