@@ -252,24 +252,107 @@ class FindRolesUseCaseTest {
     }
 
     @Test
-    @DisplayName("execute for NO_RESTRICTED skips role evaluation and completes step")
-    void testExecute_NoRestricted_SkipsRoleCheck() {
-        Inference noRestricted = Inference.builder()
+    @DisplayName("execute for UNRESTRICTED evaluates all objects found in pipeline events")
+    void testExecute_Unrestricted_Success_EvaluatesAllObjectsInPipelineEvents() {
+        Inference unrestricted = Inference.builder()
                 .pipelineId("pipeline-789")
-                .restrictionLevel("NO_RESTRICTED")
+                .restrictionLevel("UNRESTRICTED")
                 .build();
-        when(inferenceRepository.findByPipelineId("pipeline-789")).thenReturn(Optional.of(noRestricted));
+        when(inferenceRepository.findByPipelineId("pipeline-789")).thenReturn(Optional.of(unrestricted));
 
-        findRolesUseCase.execute("pipeline-789", List.of("BRCA1"), "user-123");
+        KbEvent event1 = new KbEvent("pipeline-789", "TP53", "binds", "MDM2", List.of("111"));
+        KbEvent event2 = new KbEvent("pipeline-789", "MDM2", "degrades", "CDKN1A", List.of("222"));
+        when(pubmedIntegrationRepository.getEventsByPipeline("pipeline-789")).thenReturn(List.of(event1, event2));
 
-        verifyNoInteractions(ontologiesRepository);
-        verifyNoInteractions(pubmedIntegrationRepository);
+        when(ontologiesRepository.searchMeshId(List.of("TP53"))).thenReturn(Optional.of("D016159"));
+        when(ontologiesRepository.searchMeshId(List.of("MDM2"))).thenReturn(Optional.of("D000071239"));
+        when(ontologiesRepository.searchMeshId(List.of("CDKN1A"))).thenReturn(Optional.of("D019941"));
+
+        when(ontologiesRepository.checkAllTypes("D016159")).thenReturn(Map.of("PROTEIN", true));
+        when(ontologiesRepository.checkAllTypes("D000071239")).thenReturn(Map.of("PROTEIN", true, "ENZYME", true));
+        when(ontologiesRepository.checkAllTypes("D019941")).thenReturn(Map.of("PROTEIN", true));
+
+        findRolesUseCase.execute("pipeline-789", Collections.emptyList(), "user-123");
+
+        ArgumentCaptor<Inference> inferenceCaptor = ArgumentCaptor.forClass(Inference.class);
+        verify(inferenceRepository).save(inferenceCaptor.capture());
+
+        Inference saved = inferenceCaptor.getValue();
+        assertEquals(3, saved.getRoles().size());
+        assertTrue(saved.getRoles().containsKey("TP53"));
+        assertTrue(saved.getRoles().containsKey("MDM2"));
+        assertTrue(saved.getRoles().containsKey("CDKN1A"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metricsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(configAndControlRepository).updateStep(
                 eq("pipeline-789"),
                 eq("FIND_ROLES"),
                 eq("COMPLETED"),
                 eq("user-123"),
-                anyMap()
+                metricsCaptor.capture()
+        );
+
+        Map<String, String> metrics = metricsCaptor.getValue();
+        assertEquals("UNRESTRICTED", metrics.get("restrictionLevel"));
+        assertEquals("2", metrics.get("totalEvents"));
+        assertEquals("3", metrics.get("totalEvaluatedObjects"));
+        assertEquals("3", metrics.get("rolesIdentified"));
+    }
+
+    @Test
+    @DisplayName("execute for UNRESTRICTED when no events exist completes with zero evaluated objects")
+    void testExecute_Unrestricted_WhenNoEventsFound() {
+        Inference unrestricted = Inference.builder()
+                .pipelineId("pipeline-789")
+                .restrictionLevel("NO_RESTRICTED")
+                .build();
+        when(inferenceRepository.findByPipelineId("pipeline-789")).thenReturn(Optional.of(unrestricted));
+        when(pubmedIntegrationRepository.getEventsByPipeline("pipeline-789")).thenReturn(Collections.emptyList());
+
+        findRolesUseCase.execute("pipeline-789", Collections.emptyList(), "user-123");
+
+        verifyNoInteractions(ontologiesRepository);
+
+        ArgumentCaptor<Inference> inferenceCaptor = ArgumentCaptor.forClass(Inference.class);
+        verify(inferenceRepository).save(inferenceCaptor.capture());
+        assertTrue(inferenceCaptor.getValue().getRoles().isEmpty());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metricsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-789"),
+                eq("FIND_ROLES"),
+                eq("COMPLETED"),
+                eq("user-123"),
+                metricsCaptor.capture()
+        );
+
+        Map<String, String> metrics = metricsCaptor.getValue();
+        assertEquals("NO_RESTRICTED", metrics.get("restrictionLevel"));
+        assertEquals("0", metrics.get("totalEvents"));
+        assertEquals("0", metrics.get("totalEvaluatedObjects"));
+    }
+
+    @Test
+    @DisplayName("execute for unknown restriction level skips role evaluation and completes step")
+    void testExecute_UnknownRestrictionLevel_SkipsRoleCheck() {
+        Inference customLevel = Inference.builder()
+                .pipelineId("pipeline-999")
+                .restrictionLevel("CUSTOM_LEVEL")
+                .build();
+        when(inferenceRepository.findByPipelineId("pipeline-999")).thenReturn(Optional.of(customLevel));
+
+        findRolesUseCase.execute("pipeline-999", List.of("BRCA1"), "user-123");
+
+        verifyNoInteractions(ontologiesRepository);
+        verifyNoInteractions(pubmedIntegrationRepository);
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-999"),
+                eq("FIND_ROLES"),
+                eq("COMPLETED"),
+                eq("user-123"),
+                argThat(metrics -> metrics.get("statusMessage").contains("deferred"))
         );
     }
 

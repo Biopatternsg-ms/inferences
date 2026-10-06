@@ -104,4 +104,34 @@ class PubmedIntegrationRepositoryAdapterTest {
 
         verifyNoInteractions(pubmedIntegrationHttpClient);
     }
+
+    @Test
+    @DisplayName("getEventsByPipeline maps DTOs to domain KbEvent correctly")
+    void testGetEventsByPipeline_Success() {
+        KbEventDTO dto1 = new KbEventDTO("pipe-1", "BRCA1", "BINDS_TO", "RAD51", List.of("12345"));
+        KbEventDTO dto2 = new KbEventDTO("pipe-1", "TP53", "ACTIVATES", "MDM2", List.of("67890"));
+        when(pubmedIntegrationHttpClient.getKbEventsByPipeline("pipe-1")).thenReturn(List.of(dto1, dto2));
+
+        List<KbEvent> result = adapter.getEventsByPipeline("pipe-1");
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("BRCA1", result.get(0).first());
+        assertEquals("TP53", result.get(1).first());
+    }
+
+    @Test
+    @DisplayName("getEventsByPipeline handles empty or 404 response gracefully")
+    void testGetEventsByPipeline_EmptyAnd404() {
+        when(pubmedIntegrationHttpClient.getKbEventsByPipeline("pipe-1")).thenReturn(Collections.emptyList());
+        assertTrue(adapter.getEventsByPipeline("pipe-1").isEmpty());
+
+        Response response = Response.status(404).build();
+        when(pubmedIntegrationHttpClient.getKbEventsByPipeline("pipe-2"))
+                .thenThrow(new WebApplicationException(response));
+        assertTrue(adapter.getEventsByPipeline("pipe-2").isEmpty());
+
+        assertTrue(adapter.getEventsByPipeline(null).isEmpty());
+        assertTrue(adapter.getEventsByPipeline("   ").isEmpty());
+    }
 }

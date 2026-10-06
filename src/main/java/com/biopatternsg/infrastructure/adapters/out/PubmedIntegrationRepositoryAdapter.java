@@ -76,4 +76,42 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
             return Collections.emptyList();
         }
     }
+
+    @Override
+    public List<KbEvent> getEventsByPipeline(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            List<KbEventDTO> dtos = pubmedIntegrationHttpClient.getKbEventsByPipeline(pipelineId);
+            if (dtos == null || dtos.isEmpty()) {
+                log.debug("No events found in pubmed-integration for pipelineId: {}", pipelineId);
+                return Collections.emptyList();
+            }
+
+            return dtos.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(dto -> new KbEvent(
+                            dto.pipelineId(),
+                            dto.first(),
+                            dto.relation(),
+                            dto.second(),
+                            dto.pubmedIds()
+                    ))
+                    .toList();
+
+        } catch (WebApplicationException e) {
+            if (e.getResponse() != null && e.getResponse().getStatus() == 404) {
+                log.debug("Events not found (404) in pubmed-integration for pipelineId: {}", pipelineId);
+            } else {
+                log.warn("Error calling pubmed-integration for pipelineId: {}: {}", pipelineId, e.getMessage());
+            }
+            return Collections.emptyList();
+        } catch (Exception e) {
+            log.warn("Unexpected error fetching events from pubmed-integration for pipelineId: {}: {}",
+                    pipelineId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
 }

@@ -46,6 +46,8 @@ public class FindRolesUseCase implements FindRoles {
     private static final String STATUS_FAILED = "FAILED";
     private static final String VERY_RESTRICTED = "VERY_RESTRICTED";
     private static final String RESTRICTED = "RESTRICTED";
+    private static final String UNRESTRICTED = "UNRESTRICTED";
+    private static final String NO_RESTRICTED = "NO_RESTRICTED";
 
     private final InferenceRepository inferenceRepository;
     private final OntologiesRepository ontologiesRepository;
@@ -78,6 +80,8 @@ public class FindRolesUseCase implements FindRoles {
                 processVeryRestricted(inference, alignedObjects, userId);
             } else if (RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
                 processRestricted(inference, alignedObjects, userId);
+            } else if (UNRESTRICTED.equalsIgnoreCase(restrictionLevel) || NO_RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
+                processUnrestricted(inference, userId);
             } else {
                 processOtherRestrictionLevels(inference, userId);
             }
@@ -263,6 +267,58 @@ public class FindRolesUseCase implements FindRoles {
         }
 
         return new RoleEvaluationSummary(roles, foundMeshIds, entitiesWithRoles);
+    }
+
+    private void processUnrestricted(Inference inference, String userId) {
+        String pipelineId = inference.getPipelineId();
+        log.info("Pipeline {}: starting UNRESTRICTED evaluation fetching all biological events", pipelineId);
+
+        List<KbEvent> events = pubmedIntegrationRepository.getEventsByPipeline(pipelineId);
+        int totalEvents = (events != null) ? events.size() : 0;
+        log.info("Pipeline {}: retrieved {} biological events for UNRESTRICTED evaluation", pipelineId, totalEvents);
+
+        Map<String, String> canonicalSymbols = new LinkedHashMap<>();
+        if (events != null) {
+            for (KbEvent event : events) {
+                String first = event.first() != null ? event.first().trim() : "";
+                String second = event.second() != null ? event.second().trim() : "";
+
+                if (!first.isBlank()) {
+                    canonicalSymbols.putIfAbsent(first.toUpperCase(), first);
+                }
+                if (!second.isBlank()) {
+                    canonicalSymbols.putIfAbsent(second.toUpperCase(), second);
+                }
+            }
+        }
+
+        List<String> distinctSymbols = new ArrayList<>(canonicalSymbols.values());
+        log.info("Pipeline {}: UNRESTRICTED evaluation pool prepared: {} total distinct objects across {} events: {}",
+                pipelineId, distinctSymbols.size(), totalEvents, distinctSymbols);
+
+        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(pipelineId, distinctSymbols);
+
+        inference.setRoles(evalResult.roles());
+        inferenceRepository.save(inference);
+        log.info("Pipeline {} UNRESTRICTED roles evaluated. Found {} MeSH IDs, recorded {} entities with categories",
+                pipelineId, evalResult.foundMeshIds(), evalResult.roles().size());
+
+        Map<String, String> metrics = new LinkedHashMap<>();
+        metrics.put("restrictionLevel", inference.getRestrictionLevel());
+        metrics.put("totalEvents", String.valueOf(totalEvents));
+        metrics.put("totalEvaluatedObjects", String.valueOf(distinctSymbols.size()));
+        metrics.put("meshIdsFound", String.valueOf(evalResult.foundMeshIds()));
+        metrics.put("rolesIdentified", String.valueOf(evalResult.roles().size()));
+        metrics.put("entitiesWithActiveRoles", String.valueOf(evalResult.entitiesWithActiveRoles()));
+        metrics.put("statusMessage", "Biological roles identified successfully for UNRESTRICTED level");
+
+        configAndControlRepository.updateStep(
+                pipelineId,
+                STEP_FIND_ROLES,
+                STATUS_COMPLETED,
+                userId,
+                metrics
+        );
     }
 
     private void processOtherRestrictionLevels(Inference inference, String userId) {

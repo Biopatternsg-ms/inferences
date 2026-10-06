@@ -21,4 +21,5 @@ import java.util.List;
 
 public interface PubmedIntegrationRepository {
     List<KbEvent> getEventsByTerm(String pipelineId, String term);
+    List<KbEvent> getEventsByPipeline(String pipelineId);
 }
