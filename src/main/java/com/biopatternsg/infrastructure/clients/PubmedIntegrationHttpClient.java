@@ -37,4 +37,10 @@ public interface PubmedIntegrationHttpClient {
             @PathParam("pipelineId") String pipelineId,
             @PathParam("term") String term
     );
+
+    @GET
+    @Path("/pubmed/kb-events/{pipelineId}")
+    List<KbEventDTO> getKbEventsByPipeline(
+            @PathParam("pipelineId") String pipelineId
+    );
 }
