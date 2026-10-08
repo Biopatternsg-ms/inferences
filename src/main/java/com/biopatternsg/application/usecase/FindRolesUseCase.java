@@ -239,6 +239,7 @@ public class FindRolesUseCase implements FindRoles {
             Optional<String> meshIdOpt = ontologiesRepository.searchMeshId(List.of(symbol));
             if (meshIdOpt.isEmpty()) {
                 log.info("Symbol '{}' has no matching MeSH ID in ontologies, skipping role check", symbol);
+                roles.put(symbol, Collections.emptyList());
                 continue;
             }
 
@@ -262,6 +263,7 @@ public class FindRolesUseCase implements FindRoles {
                 }
                 log.info("Symbol '{}' (MeSH: {}) active roles: {}", symbol, meshId, activeRoles);
             } else {
+                roles.put(symbol, Collections.emptyList());
                 log.info("Symbol '{}' (MeSH: {}) returned no active categories", symbol, meshId);
             }
         }

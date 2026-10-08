@@ -114,4 +114,56 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
             return Collections.emptyList();
         }
     }
+
+    @Override
+    public List<com.biopatternsg.domain.model.KbObject> getAllKbObjects(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            List<com.biopatternsg.infrastructure.dtos.KbObjectDTO> dtos = pubmedIntegrationHttpClient.getAllKbObjects(pipelineId);
+            if (dtos == null || dtos.isEmpty()) {
+                log.debug("No kb_objects found in pubmed-integration for pipelineId: {}", pipelineId);
+                return Collections.emptyList();
+            }
+
+            return dtos.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(dto -> new com.biopatternsg.domain.model.KbObject(
+                            dto.name(),
+                            dto.synonyms() != null ? dto.synonyms() : Collections.emptyList(),
+                            dto.biotypes() != null ? dto.biotypes() : Collections.emptyList(),
+                            dto.roles() != null ? dto.roles() : Collections.emptyList()
+                    ))
+                    .toList();
+
+        } catch (WebApplicationException e) {
+            if (e.getResponse() != null && e.getResponse().getStatus() == 404) {
+                log.debug("KB objects not found (404) in pubmed-integration for pipelineId: {}", pipelineId);
+            } else {
+                log.warn("Error calling pubmed-integration getAllKbObjects for pipelineId: {}: {}", pipelineId, e.getMessage());
+            }
+            return Collections.emptyList();
+        } catch (Exception e) {
+            log.warn("Unexpected error fetching kb_objects from pubmed-integration for pipelineId: {}: {}",
+                    pipelineId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    @Override
+    public void updateKbObjectRoles(String pipelineId, java.util.Map<String, List<String>> roles) {
+        if (pipelineId == null || pipelineId.isBlank() || roles == null || roles.isEmpty()) {
+            return;
+        }
+
+        try {
+            pubmedIntegrationHttpClient.updateKbObjectRoles(pipelineId, roles);
+            log.info("Updated roles in pubmed-integration for pipelineId: {}, count: {}", pipelineId, roles.size());
+        } catch (Exception e) {
+            log.error("Error updating roles in pubmed-integration for pipelineId: {}: {}", pipelineId, e.getMessage(), e);
+            throw new RuntimeException("Failed to update roles in pubmed-integration", e);
+        }
+    }
 }

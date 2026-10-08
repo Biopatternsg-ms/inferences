@@ -113,10 +113,11 @@ class FindRolesUseCaseTest {
 
         Inference saved = inferenceCaptor.getValue();
         assertNotNull(saved.getRoles());
-        assertEquals(2, saved.getRoles().size());
+        assertEquals(3, saved.getRoles().size());
         assertEquals(List.of("PROTEIN"), saved.getRoles().get("BRCA1"));
         assertEquals(List.of("PROTEIN", "TRANSCRIPTION_FACTOR"), saved.getRoles().get("TP53"));
-        assertFalse(saved.getRoles().containsKey("UNKNOWN_ENTITY"));
+        assertTrue(saved.getRoles().containsKey("UNKNOWN_ENTITY"));
+        assertTrue(saved.getRoles().get("UNKNOWN_ENTITY").isEmpty());
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> metricsCaptor = ArgumentCaptor.forClass(Map.class);
@@ -132,7 +133,7 @@ class FindRolesUseCaseTest {
         assertEquals("VERY_RESTRICTED", capturedMetrics.get("restrictionLevel"));
         assertEquals("3", capturedMetrics.get("totalAlignedObjects"));
         assertEquals("2", capturedMetrics.get("meshIdsFound"));
-        assertEquals("2", capturedMetrics.get("rolesIdentified"));
+        assertEquals("3", capturedMetrics.get("rolesIdentified"));
         assertEquals("2", capturedMetrics.get("entitiesWithActiveRoles"));
     }
 

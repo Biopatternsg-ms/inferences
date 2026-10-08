@@ -28,6 +28,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -61,6 +62,8 @@ public class InferenceController {
     private final InferenceUseCase inferenceUseCase;
     private final InferenceMapper inferenceMapper;
     private final FindRoles findRoles;
+    private final com.biopatternsg.domain.port.in.GetBiologicalObjects getBiologicalObjects;
+    private final com.biopatternsg.domain.port.in.UpdateBiologicalObjects updateBiologicalObjects;
     private final ManagedExecutor executor;
 
     @POST
@@ -170,5 +173,49 @@ public class InferenceController {
                 .map(inferenceMapper::toResponseDTO)
                 .map(dto -> Response.ok(dto).build())
                 .orElse(Response.status(Response.Status.NOT_FOUND).build());
+    }
+
+    @GET
+    @Path("/biological-objects/{pipelineId}")
+    @Operation(summary = "Get biological objects with unified roles", description = "Retrieves evaluated biological objects with unified MeSH roles and biotypes")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Biological objects retrieved successfully"),
+            @APIResponse(responseCode = "404", description = "Inference configuration not found")
+    })
+    public Response getBiologicalObjects(@PathParam("pipelineId") String pipelineId) {
+        log.info("Received request to get biological objects for pipeline: {}", pipelineId);
+        List<com.biopatternsg.domain.model.BiologicalObject> domainList = getBiologicalObjects.execute(pipelineId);
+        List<com.biopatternsg.infrastructure.dtos.BiologicalObjectDTO> dtos = domainList.stream()
+                .map(bo -> new com.biopatternsg.infrastructure.dtos.BiologicalObjectDTO(
+                        bo.name(),
+                        bo.synonyms(),
+                        bo.biotypes(),
+                        bo.meshRoles(),
+                        bo.roles()
+                ))
+                .toList();
+        return Response.ok(dtos).build();
+    }
+
+    @PUT
+    @Path("/biological-objects/{pipelineId}")
+    @Operation(summary = "Update biological objects roles", description = "Persists edited roles to kb_objects and completes the UPDATE_BIOLOGICAL_OBJECTS step")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Biological objects roles updated successfully"),
+            @APIResponse(responseCode = "400", description = "Invalid request payload")
+    })
+    public Response updateBiologicalObjects(
+            @PathParam("pipelineId") String pipelineId,
+            @Valid com.biopatternsg.infrastructure.dtos.UpdateBiologicalObjectsRequestDTO requestDTO,
+            @HeaderParam("x-user-id") String userId
+    ) {
+        log.info("Received request to update biological objects roles for pipeline: {}", pipelineId);
+        if (requestDTO == null || requestDTO.roles() == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("message", "Payload with roles map is required"))
+                    .build();
+        }
+        updateBiologicalObjects.execute(pipelineId, requestDTO.roles(), userId);
+        return Response.ok(Map.of("message", "Biological objects roles updated successfully", "pipelineId", pipelineId)).build();
     }
 }
