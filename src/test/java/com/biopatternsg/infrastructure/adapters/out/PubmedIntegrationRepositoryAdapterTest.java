@@ -29,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -133,5 +134,46 @@ class PubmedIntegrationRepositoryAdapterTest {
 
         assertTrue(adapter.getEventsByPipeline(null).isEmpty());
         assertTrue(adapter.getEventsByPipeline("   ").isEmpty());
+    }
+
+    @Test
+    @DisplayName("getAllKbObjects maps DTOs to domain KbObject correctly")
+    void testGetAllKbObjects_Success() {
+        com.biopatternsg.infrastructure.dtos.KbObjectDTO dto = new com.biopatternsg.infrastructure.dtos.KbObjectDTO(
+                "TP53", List.of("P53"), List.of("gene"), List.of("PROTEIN")
+        );
+        when(pubmedIntegrationHttpClient.getAllKbObjects("pipe-1")).thenReturn(List.of(dto));
+
+        List<com.biopatternsg.domain.model.KbObject> result = adapter.getAllKbObjects("pipe-1");
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("TP53", result.get(0).name());
+        assertEquals(List.of("P53"), result.get(0).synonyms());
+        assertEquals(List.of("gene"), result.get(0).biotypes());
+        assertEquals(List.of("PROTEIN"), result.get(0).roles());
+    }
+
+    @Test
+    @DisplayName("getAllKbObjects handles empty or error gracefully")
+    void testGetAllKbObjects_EmptyAndError() {
+        assertTrue(adapter.getAllKbObjects(null).isEmpty());
+        assertTrue(adapter.getAllKbObjects("  ").isEmpty());
+
+        when(pubmedIntegrationHttpClient.getAllKbObjects("pipe-1")).thenReturn(Collections.emptyList());
+        assertTrue(adapter.getAllKbObjects("pipe-1").isEmpty());
+
+        when(pubmedIntegrationHttpClient.getAllKbObjects("pipe-err"))
+                .thenThrow(new RuntimeException("Error"));
+        assertTrue(adapter.getAllKbObjects("pipe-err").isEmpty());
+    }
+
+    @Test
+    @DisplayName("updateKbObjectRoles delegates to client")
+    void testUpdateKbObjectRoles() {
+        Map<String, List<String>> roles = Map.of("TP53", List.of("PROTEIN"));
+        adapter.updateKbObjectRoles("pipe-1", roles);
+
+        verify(pubmedIntegrationHttpClient).updateKbObjectRoles("pipe-1", roles);
     }
 }

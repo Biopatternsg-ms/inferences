@@ -13,17 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.biopatternsg.domain.port.out.repositories;
-
-import com.biopatternsg.domain.model.KbEvent;
-import com.biopatternsg.domain.model.KbObject;
+package com.biopatternsg.domain.model;
 
 import java.util.List;
-import java.util.Map;
 
-public interface PubmedIntegrationRepository {
-    List<KbEvent> getEventsByTerm(String pipelineId, String term);
-    List<KbEvent> getEventsByPipeline(String pipelineId);
-    List<KbObject> getAllKbObjects(String pipelineId);
-    void updateKbObjectRoles(String pipelineId, Map<String, List<String>> roles);
-}
+public record BiologicalObject(
+        String name,
+        List<String> synonyms,
+        List<String> biotypes,
+        List<String> meshRoles,
+        List<String> roles
+) {}

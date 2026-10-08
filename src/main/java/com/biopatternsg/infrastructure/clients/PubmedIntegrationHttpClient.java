@@ -43,4 +43,17 @@ public interface PubmedIntegrationHttpClient {
     List<KbEventDTO> getKbEventsByPipeline(
             @PathParam("pipelineId") String pipelineId
     );
+
+    @GET
+    @Path("/pubmed/kb-objects/{pipelineId}/all")
+    List<com.biopatternsg.infrastructure.dtos.KbObjectDTO> getAllKbObjects(
+            @PathParam("pipelineId") String pipelineId
+    );
+
+    @jakarta.ws.rs.PATCH
+    @Path("/pubmed/kb-objects/{pipelineId}/roles")
+    jakarta.ws.rs.core.Response updateKbObjectRoles(
+            @PathParam("pipelineId") String pipelineId,
+            java.util.Map<String, List<String>> rolesMap
+    );
 }
