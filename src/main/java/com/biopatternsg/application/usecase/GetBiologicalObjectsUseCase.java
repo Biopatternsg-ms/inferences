@@ -61,37 +61,36 @@ public class GetBiologicalObjectsUseCase implements GetBiologicalObjects {
                 : Collections.emptyMap();
 
         List<KbObject> kbObjects = pubmedIntegrationRepository.getAllKbObjects(pipelineId);
-        Map<String, KbObject> kbObjectMap = new LinkedHashMap<>();
-        for (KbObject kbObj : kbObjects) {
-            if (kbObj.name() != null) {
-                kbObjectMap.put(kbObj.name().toUpperCase(), kbObj);
-            }
-            if (kbObj.synonyms() != null) {
-                for (String syn : kbObj.synonyms()) {
-                    if (syn != null && !syn.isBlank()) {
-                        kbObjectMap.putIfAbsent(syn.toUpperCase(), kbObj);
+        Map<String, BiologicalObject> objectMap = new LinkedHashMap<>();
+
+        // 1. Process all objects from the Knowledge Base (kbObjects)
+        if (kbObjects != null) {
+            for (KbObject kbObj : kbObjects) {
+                if (kbObj == null || kbObj.name() == null || kbObj.name().isBlank()) {
+                    continue;
+                }
+                String name = kbObj.name();
+                String upperName = name.toUpperCase();
+
+                List<String> synonyms = kbObj.synonyms() != null ? kbObj.synonyms() : Collections.emptyList();
+                List<String> biotypes = kbObj.biotypes() != null ? kbObj.biotypes() : Collections.emptyList();
+
+                // Look up MeSH roles: direct match or via synonyms
+                List<String> meshRoles = meshRolesMap.get(upperName);
+                if (meshRoles == null) {
+                    for (String syn : synonyms) {
+                        if (syn != null && meshRolesMap.containsKey(syn.toUpperCase())) {
+                            meshRoles = meshRolesMap.get(syn.toUpperCase());
+                            break;
+                        }
                     }
                 }
-            }
-        }
-
-        List<BiologicalObject> result = new ArrayList<>();
-
-        if (!meshRolesMap.isEmpty()) {
-            for (Map.Entry<String, List<String>> entry : meshRolesMap.entrySet()) {
-                String symbol = entry.getKey();
-                List<String> meshRoles = entry.getValue() != null ? entry.getValue() : Collections.emptyList();
-
-                KbObject kbObj = kbObjectMap.get(symbol.toUpperCase());
-                List<String> synonyms = kbObj != null && kbObj.synonyms() != null
-                        ? kbObj.synonyms()
-                        : Collections.emptyList();
-                List<String> biotypes = kbObj != null && kbObj.biotypes() != null
-                        ? kbObj.biotypes()
-                        : Collections.emptyList();
+                if (meshRoles == null) {
+                    meshRoles = Collections.emptyList();
+                }
 
                 List<String> unifiedRoles;
-                if (kbObj != null && kbObj.roles() != null && !kbObj.roles().isEmpty()) {
+                if (kbObj.roles() != null && !kbObj.roles().isEmpty()) {
                     unifiedRoles = kbObj.roles();
                 } else {
                     Set<String> combined = new LinkedHashSet<>(meshRoles);
@@ -103,38 +102,42 @@ public class GetBiologicalObjectsUseCase implements GetBiologicalObjects {
                     unifiedRoles = new ArrayList<>(combined);
                 }
 
-                result.add(new BiologicalObject(
-                        symbol,
+                objectMap.put(upperName, new BiologicalObject(
+                        name,
                         synonyms,
                         biotypes,
                         meshRoles,
                         unifiedRoles
                 ));
             }
-        } else {
-            for (KbObject kbObj : kbObjects) {
-                List<String> synonyms = kbObj.synonyms() != null ? kbObj.synonyms() : Collections.emptyList();
-                List<String> biotypes = kbObj.biotypes() != null ? kbObj.biotypes() : Collections.emptyList();
-                List<String> unifiedRoles;
-                if (kbObj.roles() != null && !kbObj.roles().isEmpty()) {
-                    unifiedRoles = kbObj.roles();
-                } else {
-                    Set<String> combined = new LinkedHashSet<>();
-                    for (String b : biotypes) {
-                        if (b != null && !b.isBlank()) combined.add(b.trim().toUpperCase());
-                    }
-                    unifiedRoles = new ArrayList<>(combined);
-                }
-                result.add(new BiologicalObject(
-                        kbObj.name(),
-                        synonyms,
-                        biotypes,
+        }
+
+        // 2. Also ensure any symbol from meshRolesMap that was not in kbObjects is included
+        for (Map.Entry<String, List<String>> entry : meshRolesMap.entrySet()) {
+            String symbol = entry.getKey();
+            if (symbol == null || symbol.isBlank()) {
+                continue;
+            }
+            String upperSymbol = symbol.toUpperCase();
+
+            boolean alreadyCovered = objectMap.containsKey(upperSymbol) ||
+                    objectMap.values().stream().anyMatch(bo ->
+                            bo.synonyms() != null && bo.synonyms().stream().anyMatch(s -> s != null && s.equalsIgnoreCase(symbol))
+                    );
+
+            if (!alreadyCovered) {
+                List<String> meshRoles = entry.getValue() != null ? entry.getValue() : Collections.emptyList();
+                objectMap.put(upperSymbol, new BiologicalObject(
+                        symbol,
                         Collections.emptyList(),
-                        unifiedRoles
+                        Collections.emptyList(),
+                        meshRoles,
+                        new ArrayList<>(meshRoles)
                 ));
             }
         }
 
+        List<BiologicalObject> result = new ArrayList<>(objectMap.values());
         log.info("Returning {} biological objects for pipelineId: {}", result.size(), pipelineId);
         return result;
     }
