@@ -136,7 +136,36 @@ class GetBiologicalObjectsUseCaseTest {
         List<BiologicalObject> result = useCase.execute(pipelineId);
 
         assertEquals(1, result.size());
-        assertEquals("P53", result.get(0).name());
+        assertEquals("TP53", result.get(0).name());
         assertEquals(List.of("TUMOR_SUPPRESSOR"), result.get(0).roles());
+    }
+
+    @Test
+    void execute_includesKbObjectsWithoutMeshRolesUsingBiotypes() {
+        String pipelineId = "pipe-123";
+        Map<String, List<String>> meshRoles = Map.of("TP53", List.of("PROTEIN"));
+
+        Inference inference = Inference.builder()
+                .pipelineId(pipelineId)
+                .roles(meshRoles)
+                .build();
+
+        KbObject tp53 = new KbObject("TP53", List.of("P53"), List.of("protein"), Collections.emptyList());
+        KbObject egfr = new KbObject("EGFR", List.of("ERBB1"), List.of("gene"), Collections.emptyList());
+
+        when(inferenceRepository.findByPipelineId(pipelineId)).thenReturn(Optional.of(inference));
+        when(pubmedIntegrationRepository.getAllKbObjects(pipelineId)).thenReturn(List.of(tp53, egfr));
+
+        List<BiologicalObject> result = useCase.execute(pipelineId);
+
+        assertEquals(2, result.size());
+
+        BiologicalObject tp53Result = result.stream().filter(b -> b.name().equals("TP53")).findFirst().orElseThrow();
+        assertEquals(List.of("PROTEIN"), tp53Result.meshRoles());
+        assertTrue(tp53Result.roles().contains("PROTEIN"));
+
+        BiologicalObject egfrResult = result.stream().filter(b -> b.name().equals("EGFR")).findFirst().orElseThrow();
+        assertTrue(egfrResult.meshRoles().isEmpty());
+        assertEquals(List.of("GENE"), egfrResult.roles());
     }
 }
