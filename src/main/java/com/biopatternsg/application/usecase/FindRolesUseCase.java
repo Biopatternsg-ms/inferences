@@ -117,7 +117,7 @@ public class FindRolesUseCase implements FindRoles {
             log.warn("Pipeline {}: No valid symbols found to evaluate in alignedObjects", pipelineId);
         }
 
-        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(pipelineId, distinctSymbols);
+        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(distinctSymbols);
 
         inference.setRoles(evalResult.roles());
         inferenceRepository.save(inference);
@@ -203,7 +203,7 @@ public class FindRolesUseCase implements FindRoles {
         log.info("Pipeline {}: RESTRICTED evaluation pool prepared: {} base objects, {} co-occurring objects, {} total to evaluate: {}",
                 pipelineId, baseSymbols.size(), coOccurringSymbols.size(), distinctSymbols.size(), distinctSymbols);
 
-        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(pipelineId, distinctSymbols);
+        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(distinctSymbols);
 
         inference.setRoles(evalResult.roles());
         inferenceRepository.save(inference);
@@ -229,7 +229,7 @@ public class FindRolesUseCase implements FindRoles {
         );
     }
 
-    private RoleEvaluationSummary evaluateRolesForSymbols(String pipelineId, List<String> symbols) {
+    private RoleEvaluationSummary evaluateRolesForSymbols(List<String> symbols) {
         Map<String, List<String>> roles = new LinkedHashMap<>();
         Map<String, Map<String, Boolean>> localMeshCache = new LinkedHashMap<>();
         int foundMeshIds = 0;
@@ -298,7 +298,7 @@ public class FindRolesUseCase implements FindRoles {
         log.info("Pipeline {}: UNRESTRICTED evaluation pool prepared: {} total distinct objects across {} events: {}",
                 pipelineId, distinctSymbols.size(), totalEvents, distinctSymbols);
 
-        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(pipelineId, distinctSymbols);
+        RoleEvaluationSummary evalResult = evaluateRolesForSymbols(distinctSymbols);
 
         inference.setRoles(evalResult.roles());
         inferenceRepository.save(inference);
