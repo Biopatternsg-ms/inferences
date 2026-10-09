@@ -389,4 +389,30 @@ class FindRolesUseCaseTest {
                 argThat(metrics -> metrics.containsKey("error"))
         );
     }
+
+    @Test
+    @DisplayName("execute for VERY_RESTRICTED when alignedObjects is null fetches them from pubmedIntegrationRepository")
+    void testExecute_VeryRestricted_WhenAlignedObjectsNull_FetchesFromPubmedIntegration() {
+        when(inferenceRepository.findByPipelineId("pipeline-123")).thenReturn(Optional.of(veryRestrictedInference));
+        when(pubmedIntegrationRepository.getAlignedObjects("pipeline-123")).thenReturn(List.of("BRCA1"));
+        when(ontologiesRepository.searchMeshId(List.of("BRCA1"))).thenReturn(Optional.of("D019084"));
+        when(ontologiesRepository.checkAllTypes("D019084")).thenReturn(Map.of("PROTEIN", true));
+
+        findRolesUseCase.execute("pipeline-123", null, "user-123");
+
+        verify(pubmedIntegrationRepository).getAlignedObjects("pipeline-123");
+
+        ArgumentCaptor<Inference> inferenceCaptor = ArgumentCaptor.forClass(Inference.class);
+        verify(inferenceRepository).save(inferenceCaptor.capture());
+        Inference saved = inferenceCaptor.getValue();
+        assertEquals(Map.of("BRCA1", List.of("PROTEIN")), saved.getRoles());
+
+        verify(configAndControlRepository).updateStep(
+                eq("pipeline-123"),
+                eq("FIND_ROLES"),
+                eq("COMPLETED"),
+                eq("user-123"),
+                anyMap()
+        );
+    }
 }

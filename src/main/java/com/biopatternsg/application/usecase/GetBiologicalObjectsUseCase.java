@@ -18,6 +18,7 @@ package com.biopatternsg.application.usecase;
 import com.biopatternsg.domain.model.BiologicalObject;
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.KbObject;
+import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.in.GetBiologicalObjects;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
@@ -41,6 +42,7 @@ public class GetBiologicalObjectsUseCase implements GetBiologicalObjects {
 
     private final InferenceRepository inferenceRepository;
     private final PubmedIntegrationRepository pubmedIntegrationRepository;
+    private final FindRoles findRoles;
 
     @Override
     public List<BiologicalObject> execute(String pipelineId) {
@@ -59,6 +61,20 @@ public class GetBiologicalObjectsUseCase implements GetBiologicalObjects {
         Map<String, List<String>> meshRolesMap = inference.getRoles() != null
                 ? inference.getRoles()
                 : Collections.emptyMap();
+
+        if (meshRolesMap.isEmpty() && inference.getRestrictionLevel() != null) {
+            log.info("No roles found in inference for pipelineId: {}, triggering FindRoles to self-heal", pipelineId);
+            try {
+                findRoles.execute(pipelineId, null, "system");
+                inferenceOpt = inferenceRepository.findByPipelineId(pipelineId);
+                if (inferenceOpt.isPresent()) {
+                    inference = inferenceOpt.get();
+                    meshRolesMap = inference.getRoles() != null ? inference.getRoles() : Collections.emptyMap();
+                }
+            } catch (Exception e) {
+                log.warn("Failed to auto-evaluate roles during GetBiologicalObjects for pipelineId: {}", pipelineId, e);
+            }
+        }
 
         List<KbObject> kbObjects = pubmedIntegrationRepository.getAllKbObjects(pipelineId);
         Map<String, KbObject> kbObjectMap = new LinkedHashMap<>();
@@ -120,8 +136,10 @@ public class GetBiologicalObjectsUseCase implements GetBiologicalObjects {
                 ));
             }
         } else {
-            // Fallback if FindRoles has not run yet: return all KB objects with biotypes
-            if (kbObjects != null) {
+            // Fallback if FindRoles has not run yet: return all KB objects with biotypes only if pipeline is unrestricted
+            boolean isRestricted = "VERY_RESTRICTED".equalsIgnoreCase(inference.getRestrictionLevel())
+                    || "RESTRICTED".equalsIgnoreCase(inference.getRestrictionLevel());
+            if (!isRestricted && kbObjects != null) {
                 for (KbObject kbObj : kbObjects) {
                     if (kbObj == null || kbObj.name() == null || kbObj.name().isBlank()) {
                         continue;

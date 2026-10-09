@@ -15,10 +15,9 @@
  */
 package com.biopatternsg.application.usecase;
 
-import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.in.ResetBiologicalObjectsRoles;
 import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
-import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +25,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 
 @Slf4j
 @ApplicationScoped
@@ -36,8 +34,8 @@ public class ResetBiologicalObjectsRolesUseCase implements ResetBiologicalObject
     private static final String STEP_UPDATE_BIOLOGICAL_OBJECTS = "UPDATE_BIOLOGICAL_OBJECTS";
     private static final String STATUS_PENDING = "PENDING";
 
-    private final InferenceRepository inferenceRepository;
     private final PubmedIntegrationRepository pubmedIntegrationRepository;
+    private final FindRoles findRoles;
     private final ConfigAndControlRepository configAndControlRepository;
 
     @Override
@@ -48,16 +46,12 @@ public class ResetBiologicalObjectsRolesUseCase implements ResetBiologicalObject
             throw new IllegalArgumentException("PipelineId must not be null or blank");
         }
 
-        // 1. Reset roles in kb_objects in pubmed-integration
+        // 1. Reset roles in kb_objects in pubmed-integration (clears manual modifications)
         pubmedIntegrationRepository.resetKbObjectRoles(pipelineId);
 
-        // 2. Clear roles in inference document
-        Optional<Inference> inferenceOpt = inferenceRepository.findByPipelineId(pipelineId);
-        if (inferenceOpt.isPresent()) {
-            Inference inference = inferenceOpt.get();
-            inference.setRoles(null);
-            inferenceRepository.save(inference);
-        }
+        // 2. Re-evaluate / restore default MeSH roles for the pipeline's restriction level
+        String effectiveUserId = userId != null && !userId.isBlank() ? userId : "system";
+        findRoles.execute(pipelineId, null, effectiveUserId);
 
         // 3. Reset step in config-and-control
         Map<String, String> metrics = new LinkedHashMap<>();
@@ -67,7 +61,7 @@ public class ResetBiologicalObjectsRolesUseCase implements ResetBiologicalObject
                 pipelineId,
                 STEP_UPDATE_BIOLOGICAL_OBJECTS,
                 STATUS_PENDING,
-                userId != null && !userId.isBlank() ? userId : "system",
+                effectiveUserId,
                 metrics
         );
 

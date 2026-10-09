@@ -18,6 +18,7 @@ package com.biopatternsg.application.usecase;
 import com.biopatternsg.domain.model.BiologicalObject;
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.KbObject;
+import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,9 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GetBiologicalObjectsUseCaseTest {
@@ -43,12 +47,15 @@ class GetBiologicalObjectsUseCaseTest {
     @Mock
     private PubmedIntegrationRepository pubmedIntegrationRepository;
 
+    @Mock
+    private FindRoles findRoles;
+
     private GetBiologicalObjectsUseCase useCase;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        useCase = new GetBiologicalObjectsUseCase(inferenceRepository, pubmedIntegrationRepository);
+        useCase = new GetBiologicalObjectsUseCase(inferenceRepository, pubmedIntegrationRepository, findRoles);
     }
 
     @Test
@@ -171,5 +178,54 @@ class GetBiologicalObjectsUseCaseTest {
         assertTrue(egfrResult.meshRoles().isEmpty());
         assertEquals(List.of("GENE"), egfrResult.biotypes());
         assertEquals(List.of("GENE"), egfrResult.roles());
+    }
+
+    @Test
+    void execute_triggersSelfHealingWhenRolesAreEmptyAndRestrictionLevelIsSet() {
+        String pipelineId = "pipe-reset";
+        Inference initialInference = Inference.builder()
+                .pipelineId(pipelineId)
+                .restrictionLevel("VERY_RESTRICTED")
+                .roles(null)
+                .build();
+
+        Inference healedInference = Inference.builder()
+                .pipelineId(pipelineId)
+                .restrictionLevel("VERY_RESTRICTED")
+                .roles(Map.of("TP53", List.of("PROTEIN")))
+                .build();
+
+        when(inferenceRepository.findByPipelineId(pipelineId))
+                .thenReturn(Optional.of(initialInference))
+                .thenReturn(Optional.of(healedInference));
+
+        KbObject kbObj = new KbObject("TP53", List.of("P53"), List.of("gene"), Collections.emptyList());
+        when(pubmedIntegrationRepository.getAllKbObjects(pipelineId)).thenReturn(List.of(kbObj));
+
+        List<BiologicalObject> result = useCase.execute(pipelineId);
+
+        verify(findRoles).execute(eq(pipelineId), isNull(), eq("system"));
+        assertEquals(1, result.size());
+        assertEquals("TP53", result.get(0).name());
+        assertTrue(result.get(0).roles().contains("PROTEIN"));
+    }
+
+    @Test
+    void execute_doesNotReturnAllKbObjectsWhenRestrictedAndRolesEmpty() {
+        String pipelineId = "pipe-restricted-empty";
+        Inference inference = Inference.builder()
+                .pipelineId(pipelineId)
+                .restrictionLevel("VERY_RESTRICTED")
+                .roles(Collections.emptyMap())
+                .build();
+
+        when(inferenceRepository.findByPipelineId(pipelineId)).thenReturn(Optional.of(inference));
+        KbObject kb1 = new KbObject("TP53", List.of(), List.of("gene"), List.of());
+        KbObject kb2 = new KbObject("EGFR", List.of(), List.of("gene"), List.of());
+        when(pubmedIntegrationRepository.getAllKbObjects(pipelineId)).thenReturn(List.of(kb1, kb2));
+
+        List<BiologicalObject> result = useCase.execute(pipelineId);
+
+        assertTrue(result.isEmpty());
     }
 }
