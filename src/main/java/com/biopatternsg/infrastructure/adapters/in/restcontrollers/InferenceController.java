@@ -25,6 +25,7 @@ import com.biopatternsg.infrastructure.mapper.InferenceMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.validation.Valid;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
@@ -64,6 +65,7 @@ public class InferenceController {
     private final FindRoles findRoles;
     private final com.biopatternsg.domain.port.in.GetBiologicalObjects getBiologicalObjects;
     private final com.biopatternsg.domain.port.in.UpdateBiologicalObjects updateBiologicalObjects;
+    private final com.biopatternsg.domain.port.in.ResetBiologicalObjectsRoles resetBiologicalObjectsRoles;
     private final ManagedExecutor executor;
 
     @POST
@@ -217,5 +219,20 @@ public class InferenceController {
         }
         updateBiologicalObjects.execute(pipelineId, requestDTO.roles(), userId);
         return Response.ok(Map.of("message", "Biological objects roles updated successfully", "pipelineId", pipelineId)).build();
+    }
+
+    @DELETE
+    @Path("/biological-objects/{pipelineId}/roles")
+    @Operation(summary = "Reset biological objects roles", description = "Resets biological objects roles back to the initial biotypes and MeSH evaluation")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Biological objects roles reset successfully")
+    })
+    public Response resetBiologicalObjectsRoles(
+            @PathParam("pipelineId") String pipelineId,
+            @HeaderParam("x-user-id") String userId
+    ) {
+        log.info("Received request to reset biological objects roles for pipeline: {}", pipelineId);
+        resetBiologicalObjectsRoles.execute(pipelineId, userId);
+        return Response.ok(Map.of("message", "Biological objects roles reset successfully", "pipelineId", pipelineId)).build();
     }
 }

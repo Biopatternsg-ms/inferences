@@ -166,4 +166,19 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
             throw new RuntimeException("Failed to update roles in pubmed-integration", e);
         }
     }
+
+    @Override
+    public void resetKbObjectRoles(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return;
+        }
+
+        try {
+            pubmedIntegrationHttpClient.resetKbObjectRoles(pipelineId);
+            log.info("Reset roles in pubmed-integration for pipelineId: {}", pipelineId);
+        } catch (Exception e) {
+            log.error("Error resetting roles in pubmed-integration for pipelineId: {}: {}", pipelineId, e.getMessage(), e);
+            throw new RuntimeException("Failed to reset roles in pubmed-integration", e);
+        }
+    }
 }

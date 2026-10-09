@@ -176,4 +176,12 @@ class PubmedIntegrationRepositoryAdapterTest {
 
         verify(pubmedIntegrationHttpClient).updateKbObjectRoles("pipe-1", roles);
     }
+
+    @Test
+    @DisplayName("resetKbObjectRoles delegates to client")
+    void testResetKbObjectRoles() {
+        adapter.resetKbObjectRoles("pipe-1");
+
+        verify(pubmedIntegrationHttpClient).resetKbObjectRoles("pipe-1");
+    }
 }

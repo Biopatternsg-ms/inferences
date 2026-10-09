@@ -56,4 +56,10 @@ public interface PubmedIntegrationHttpClient {
             @PathParam("pipelineId") String pipelineId,
             java.util.Map<String, List<String>> rolesMap
     );
+
+    @jakarta.ws.rs.DELETE
+    @Path("/pubmed/kb-objects/{pipelineId}/roles")
+    jakarta.ws.rs.core.Response resetKbObjectRoles(
+            @PathParam("pipelineId") String pipelineId
+    );
 }
