@@ -34,7 +34,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class UpdateBiologicalObjectsUseCase implements UpdateBiologicalObjects {
 
-    private static final String STEP_UPDATE_BIOLOGICAL_OBJECTS = "update_biological_objects";
+    private static final String STEP_UPDATE_BIOLOGICAL_OBJECTS = "UPDATE_BIOLOGICAL_OBJECTS";
     private static final String STATUS_COMPLETED = "COMPLETED";
 
     private final InferenceRepository inferenceRepository;

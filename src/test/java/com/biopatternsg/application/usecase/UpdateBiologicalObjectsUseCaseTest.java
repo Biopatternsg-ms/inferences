@@ -85,7 +85,7 @@ class UpdateBiologicalObjectsUseCaseTest {
         ArgumentCaptor<Map<String, String>> metricsCaptor = ArgumentCaptor.forClass(Map.class);
         verify(configAndControlRepository).updateStep(
                 eq(pipelineId),
-                eq("update_biological_objects"),
+                eq("UPDATE_BIOLOGICAL_OBJECTS"),
                 eq("COMPLETED"),
                 eq(userId),
                 metricsCaptor.capture()
