@@ -76,7 +76,7 @@ class GetBiologicalObjectsUseCaseTest {
         BiologicalObject tp53 = result.get(0);
         assertEquals("TP53", tp53.name());
         assertEquals(List.of("PROTEIN", "TRANSCRIPTION_FACTOR"), tp53.meshRoles());
-        assertEquals(List.of("gene"), tp53.biotypes());
+        assertEquals(List.of("GENE"), tp53.biotypes());
         // Unified roles should contain PROTEIN, TRANSCRIPTION_FACTOR, and GENE
         assertTrue(tp53.roles().contains("PROTEIN"));
         assertTrue(tp53.roles().contains("TRANSCRIPTION_FACTOR"));
@@ -136,14 +136,16 @@ class GetBiologicalObjectsUseCaseTest {
         List<BiologicalObject> result = useCase.execute(pipelineId);
 
         assertEquals(1, result.size());
-        assertEquals("TP53", result.get(0).name());
+        assertEquals("P53", result.get(0).name());
         assertEquals(List.of("TUMOR_SUPPRESSOR"), result.get(0).roles());
     }
 
     @Test
     void execute_includesKbObjectsWithoutMeshRolesUsingBiotypes() {
         String pipelineId = "pipe-123";
-        Map<String, List<String>> meshRoles = Map.of("TP53", List.of("PROTEIN"));
+        Map<String, List<String>> meshRoles = new LinkedHashMap<>();
+        meshRoles.put("TP53", List.of("PROTEIN"));
+        meshRoles.put("EGFR", Collections.emptyList()); // Evaluated in restriction, but no MeSH match
 
         Inference inference = Inference.builder()
                 .pipelineId(pipelineId)
@@ -162,10 +164,12 @@ class GetBiologicalObjectsUseCaseTest {
 
         BiologicalObject tp53Result = result.stream().filter(b -> b.name().equals("TP53")).findFirst().orElseThrow();
         assertEquals(List.of("PROTEIN"), tp53Result.meshRoles());
+        assertEquals(List.of("PROTEIN"), tp53Result.biotypes());
         assertTrue(tp53Result.roles().contains("PROTEIN"));
 
         BiologicalObject egfrResult = result.stream().filter(b -> b.name().equals("EGFR")).findFirst().orElseThrow();
         assertTrue(egfrResult.meshRoles().isEmpty());
+        assertEquals(List.of("GENE"), egfrResult.biotypes());
         assertEquals(List.of("GENE"), egfrResult.roles());
     }
 }
