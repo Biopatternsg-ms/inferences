@@ -76,10 +76,18 @@ public class FindRolesUseCase implements FindRoles {
             String restrictionLevel = inference.getRestrictionLevel();
             log.info("Pipeline {} restrictionLevel is: {}", pipelineId, restrictionLevel);
 
+            List<String> effectiveAlignedObjects = alignedObjects;
+            if ((effectiveAlignedObjects == null || effectiveAlignedObjects.isEmpty())
+                    && (VERY_RESTRICTED.equalsIgnoreCase(restrictionLevel) || RESTRICTED.equalsIgnoreCase(restrictionLevel))) {
+                effectiveAlignedObjects = pubmedIntegrationRepository.getAlignedObjects(pipelineId);
+                log.info("Pipeline {}: Fetched {} aligned objects from pubmed-integration",
+                        pipelineId, effectiveAlignedObjects != null ? effectiveAlignedObjects.size() : 0);
+            }
+
             if (VERY_RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
-                processVeryRestricted(inference, alignedObjects, userId);
+                processVeryRestricted(inference, effectiveAlignedObjects, userId);
             } else if (RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
-                processRestricted(inference, alignedObjects, userId);
+                processRestricted(inference, effectiveAlignedObjects, userId);
             } else if (UNRESTRICTED.equalsIgnoreCase(restrictionLevel) || NO_RESTRICTED.equalsIgnoreCase(restrictionLevel)) {
                 processUnrestricted(inference, userId);
             } else {

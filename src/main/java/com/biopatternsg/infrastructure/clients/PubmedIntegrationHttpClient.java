@@ -62,4 +62,10 @@ public interface PubmedIntegrationHttpClient {
     jakarta.ws.rs.core.Response resetKbObjectRoles(
             @PathParam("pipelineId") String pipelineId
     );
+
+    @GET
+    @Path("/pubmed/aligned-results/{pipelineId}")
+    com.biopatternsg.infrastructure.dtos.AlignedResultResponseDTO getAlignedResults(
+            @PathParam("pipelineId") String pipelineId
+    );
 }

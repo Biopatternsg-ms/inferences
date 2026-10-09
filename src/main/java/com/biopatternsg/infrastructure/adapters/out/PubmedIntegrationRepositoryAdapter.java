@@ -18,6 +18,7 @@ package com.biopatternsg.infrastructure.adapters.out;
 import com.biopatternsg.domain.model.KbEvent;
 import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
 import com.biopatternsg.infrastructure.clients.PubmedIntegrationHttpClient;
+import com.biopatternsg.infrastructure.dtos.AlignedResultResponseDTO;
 import com.biopatternsg.infrastructure.dtos.KbEventDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -179,6 +180,32 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
         } catch (Exception e) {
             log.error("Error resetting roles in pubmed-integration for pipelineId: {}: {}", pipelineId, e.getMessage(), e);
             throw new RuntimeException("Failed to reset roles in pubmed-integration", e);
+        }
+    }
+
+    @Override
+    public List<String> getAlignedObjects(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            AlignedResultResponseDTO dto = pubmedIntegrationHttpClient.getAlignedResults(pipelineId);
+            if (dto != null && dto.aligned() != null) {
+                return dto.aligned();
+            }
+            return Collections.emptyList();
+        } catch (WebApplicationException e) {
+            if (e.getResponse() != null && e.getResponse().getStatus() == 404) {
+                log.debug("Aligned results not found (404) in pubmed-integration for pipelineId: {}", pipelineId);
+            } else {
+                log.warn("Error calling pubmed-integration getAlignedResults for pipelineId: {}: {}", pipelineId, e.getMessage());
+            }
+            return Collections.emptyList();
+        } catch (Exception e) {
+            log.warn("Unexpected error fetching aligned results from pubmed-integration for pipelineId: {}: {}",
+                    pipelineId, e.getMessage());
+            return Collections.emptyList();
         }
     }
 }
