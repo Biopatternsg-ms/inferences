@@ -24,9 +24,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.net.URI;
 
 /**
- * Pre-matching filter to seamlessly route requests from both `/inferences/...`
- * and `/api/inferences/...` to the JAX-RS controllers.
- * Ensures compatibility with Krakend Gateway, Vite Dev Proxy, and direct callers.
+ * Pre-matching filter to seamlessly route requests from `/api/inferences/...`
+ * to the JAX-RS controllers at `/inferences/...`.
+ * Ensures full compatibility with direct callers, Krakend Gateway, and Vite Dev Proxy.
  */
 @Slf4j
 @Provider
@@ -43,8 +43,8 @@ public class InferencesPathFilter implements ContainerRequestFilter {
         // Remove leading slash if present for uniform checking
         String cleanPath = path.startsWith("/") ? path.substring(1) : path;
 
-        if (cleanPath.startsWith("inferences/") || cleanPath.equals("inferences")) {
-            String newPath = "api/" + cleanPath;
+        if (cleanPath.startsWith("api/inferences/") || cleanPath.equals("api/inferences")) {
+            String newPath = cleanPath.substring(4); // removes "api/"
             URI newUri = ctx.getUriInfo().getBaseUriBuilder()
                     .path(newPath)
                     .replaceQuery(ctx.getUriInfo().getRequestUri().getRawQuery())

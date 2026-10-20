@@ -63,7 +63,7 @@ import java.util.concurrent.CompletableFuture;
 @Slf4j
 @ApplicationScoped
 @RequiredArgsConstructor
-@Path("/api/inferences")
+@Path("/inferences")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Inferences", description = "Endpoints for managing pipeline inferences")
