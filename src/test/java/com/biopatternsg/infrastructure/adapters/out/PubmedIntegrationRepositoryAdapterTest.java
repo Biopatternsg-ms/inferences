@@ -18,6 +18,7 @@ package com.biopatternsg.infrastructure.adapters.out;
 import com.biopatternsg.domain.model.KbEvent;
 import com.biopatternsg.infrastructure.clients.PubmedIntegrationHttpClient;
 import com.biopatternsg.infrastructure.dtos.KbEventDTO;
+import com.biopatternsg.infrastructure.dtos.KbEventsByRestrictionRequestDTO;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.DisplayName;
@@ -183,5 +184,33 @@ class PubmedIntegrationRepositoryAdapterTest {
         adapter.resetKbObjectRoles("pipe-1");
 
         verify(pubmedIntegrationHttpClient).resetKbObjectRoles("pipe-1");
+    }
+    @Test
+    @DisplayName("getEventsByRestriction delegates to client with request DTO and maps result")
+    void testGetEventsByRestriction_Success() {
+        KbEventDTO dto = new KbEventDTO("pipe-1", "TP53", "binds", "MDM2", List.of("123"));
+        KbEventsByRestrictionRequestDTO expectedReq = new KbEventsByRestrictionRequestDTO("VERY_RESTRICTED", List.of("TP53", "MDM2"));
+        when(pubmedIntegrationHttpClient.getKbEventsByRestriction("pipe-1", expectedReq))
+                .thenReturn(List.of(dto));
+
+        List<KbEvent> result = adapter.getEventsByRestriction("pipe-1", "VERY_RESTRICTED", List.of("TP53", "MDM2"));
+
+        assertNotNull(result);
+        assertEquals(1, result.size());
+        assertEquals("TP53", result.get(0).first());
+        assertEquals("MDM2", result.get(0).second());
+    }
+
+    @Test
+    @DisplayName("getEventsByRestriction handles empty or error gracefully")
+    void testGetEventsByRestriction_EmptyAndError() {
+        assertTrue(adapter.getEventsByRestriction(null, "RESTRICTED", List.of("TP53")).isEmpty());
+        assertTrue(adapter.getEventsByRestriction("  ", "RESTRICTED", List.of("TP53")).isEmpty());
+
+        KbEventsByRestrictionRequestDTO req = new KbEventsByRestrictionRequestDTO("RESTRICTED", List.of("TP53"));
+        when(pubmedIntegrationHttpClient.getKbEventsByRestriction("pipe-1", req))
+                .thenThrow(new RuntimeException("Network error"));
+
+        assertTrue(adapter.getEventsByRestriction("pipe-1", "RESTRICTED", List.of("TP53")).isEmpty());
     }
 }

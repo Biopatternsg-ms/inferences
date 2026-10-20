@@ -19,12 +19,14 @@ import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.DynamicInferenceInput;
 import com.biopatternsg.domain.model.GraphEdge;
+import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.model.PathwayObject;
 import com.biopatternsg.domain.port.in.InferPathways;
 import com.biopatternsg.domain.port.out.PrologInferencePort;
+import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.PathwayRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -60,6 +62,7 @@ public class InferPathwaysUseCase implements InferPathways {
     private final PrologInferencePort prologInferencePort;
     private final PathwayRepository pathwayRepository;
     private final KnowledgeBaseRepository knowledgeBaseRepository;
+    private final InferenceRepository inferenceRepository;
     private final String outputDirName;
     private final Semaphore concurrencyLimiter;
     private final int timeoutSeconds;
@@ -69,12 +72,14 @@ public class InferPathwaysUseCase implements InferPathways {
             PrologInferencePort prologInferencePort,
             PathwayRepository pathwayRepository,
             KnowledgeBaseRepository knowledgeBaseRepository,
+            InferenceRepository inferenceRepository,
             @ConfigProperty(name = "inferences.output.dir", defaultValue = "output") String outputDirName,
             @ConfigProperty(name = "inferences.prolog.concurrency", defaultValue = "4") int maxConcurrency,
             @ConfigProperty(name = "inferences.prolog.timeout.seconds", defaultValue = "60") int timeoutSeconds) {
         this.prologInferencePort = prologInferencePort;
         this.pathwayRepository = pathwayRepository;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
+        this.inferenceRepository = inferenceRepository;
         this.outputDirName = outputDirName;
         this.concurrencyLimiter = new Semaphore(maxConcurrency);
         this.timeoutSeconds = timeoutSeconds;
@@ -82,10 +87,20 @@ public class InferPathwaysUseCase implements InferPathways {
 
     public InferPathwaysUseCase(
             PrologInferencePort prologInferencePort,
+            PathwayRepository pathwayRepository,
+            KnowledgeBaseRepository knowledgeBaseRepository,
             String outputDirName,
             int maxConcurrency,
             int timeoutSeconds) {
-        this(prologInferencePort, null, null, outputDirName, maxConcurrency, timeoutSeconds);
+        this(prologInferencePort, pathwayRepository, knowledgeBaseRepository, null, outputDirName, maxConcurrency, timeoutSeconds);
+    }
+
+    public InferPathwaysUseCase(
+            PrologInferencePort prologInferencePort,
+            String outputDirName,
+            int maxConcurrency,
+            int timeoutSeconds) {
+        this(prologInferencePort, null, null, null, outputDirName, maxConcurrency, timeoutSeconds);
     }
 
     @Override
@@ -1026,14 +1041,26 @@ run :-
         log.info("Starting production pipeline inference for pipelineId: {}, user: {}, summarizeKb: {}",
                 pipelineId, user, summarizeKb);
 
-        List<PathwayEvent> events = knowledgeBaseRepository.findEventsByPipelineId(pipelineId);
-        List<KbObject> objects = knowledgeBaseRepository.findObjectsByPipelineId(pipelineId);
+        if (inferenceRepository == null) {
+            throw new IllegalStateException("InferenceRepository is not configured for pipeline inference");
+        }
+        Inference inference = inferenceRepository.findByPipelineId(pipelineId)
+                .orElseThrow(() -> new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId));
+
+        List<KbObject> objects = resolveBiologicalObjects(inference, pipelineId);
+        if (objects == null || objects.isEmpty()) {
+            throw new IllegalArgumentException("No biological objects found in knowledge base for pipelineId: " + pipelineId);
+        }
+
+        String restrictionLevel = inference.getRestrictionLevel() != null ? inference.getRestrictionLevel() : "UNRESTRICTED";
+        List<String> targetObjects = (restrictedObjects != null && !restrictedObjects.isEmpty())
+                ? restrictedObjects
+                : objects.stream().map(KbObject::getName).toList();
+
+        List<PathwayEvent> events = knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(pipelineId, restrictionLevel, targetObjects);
 
         if (events == null || events.isEmpty()) {
             throw new IllegalArgumentException("No biological events found in knowledge base for pipelineId: " + pipelineId);
-        }
-        if (objects == null || objects.isEmpty()) {
-            throw new IllegalArgumentException("No biological objects found in knowledge base for pipelineId: " + pipelineId);
         }
 
         // 1. Borrar inmediatamente cualquier información de inferencia previa del pipeline (vías y grafo)
@@ -1171,6 +1198,35 @@ run :-
             default:
                 return r;
         }
+    }
+
+    private List<KbObject> resolveBiologicalObjects(String pipelineId) {
+        if (inferenceRepository == null) {
+            throw new IllegalStateException("InferenceRepository is not configured for pipeline inference");
+        }
+        Inference inference = inferenceRepository.findByPipelineId(pipelineId)
+                .orElseThrow(() -> new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId));
+        return resolveBiologicalObjects(inference, pipelineId);
+    }
+
+    private List<KbObject> resolveBiologicalObjects(Inference inference, String pipelineId) {
+        if (inference == null) {
+            throw new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId);
+        }
+        Map<String, List<String>> rolesMap = inference.getRoles();
+        if (rolesMap == null || rolesMap.isEmpty()) {
+            throw new IllegalArgumentException("No biological objects with roles found in inferences collection for pipelineId: " + pipelineId);
+        }
+
+        log.info("Loaded {} biological objects with roles strictly from inferences collection for pipelineId: {}", rolesMap.size(), pipelineId);
+        return rolesMap.entrySet().stream()
+                .filter(e -> e.getKey() != null && !e.getKey().isBlank())
+                .map(e -> KbObject.builder()
+                        .pipelineId(pipelineId)
+                        .name(e.getKey().trim())
+                        .roles(e.getValue() != null ? e.getValue() : List.of())
+                        .build())
+                .toList();
     }
 
     private void deleteDirectoryRecursively(Path dir) {

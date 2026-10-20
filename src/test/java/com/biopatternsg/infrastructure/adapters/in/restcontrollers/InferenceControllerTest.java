@@ -18,7 +18,10 @@ package com.biopatternsg.infrastructure.adapters.in.restcontrollers;
 import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
+import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.PathwayGraph;
+import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
+import java.util.Map;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.PathwayRepository;
 import io.quarkus.test.InjectMock;
@@ -49,6 +52,9 @@ class InferenceControllerTest {
 
     @InjectMock
     PathwayRepository pathwayRepository;
+
+    @InjectMock
+    InferenceRepository inferenceRepository;
 
     @Test
     @DisplayName("GET /api/inferences/ping should return 200 and status UP")
@@ -98,7 +104,7 @@ class InferenceControllerTest {
     @Test
     @DisplayName("POST /api/inferences/pathways/run with non-existent pipelineId should return 404")
     void testRunEndpointNotFound() {
-        when(knowledgeBaseRepository.findEventsByPipelineId("non-existent-pipe-999"))
+        when(knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(eq("non-existent-pipe-999"), any(), any()))
                 .thenReturn(Collections.emptyList());
 
         given()
@@ -124,8 +130,18 @@ class InferenceControllerTest {
                 new PathwayEvent("IRF7", "bind", "IRF3")
         );
 
-        when(knowledgeBaseRepository.findEventsByPipelineId(pipeId)).thenReturn(events);
-        when(knowledgeBaseRepository.findObjectsByPipelineId(pipeId)).thenReturn(objects);
+        Map<String, List<String>> rolesMap = Map.of(
+                "IFNA1", List.of("ligand"),
+                "IRF7", List.of("protein"),
+                "IRF3", List.of("transcription_factor")
+        );
+        Inference inference = Inference.builder()
+                .pipelineId(pipeId)
+                .roles(rolesMap)
+                .build();
+
+        when(knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(eq(pipeId), any(), any())).thenReturn(events);
+        when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.of(inference));
 
         given()
                 .contentType("application/json")

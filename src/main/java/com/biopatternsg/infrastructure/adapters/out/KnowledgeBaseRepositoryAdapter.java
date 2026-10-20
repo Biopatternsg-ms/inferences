@@ -15,18 +15,19 @@
  */
 package com.biopatternsg.infrastructure.adapters.out;
 
-import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
 import com.biopatternsg.infrastructure.mapper.PathwayMapper;
 import com.biopatternsg.infrastructure.mongo.KbEventCollection;
-import com.biopatternsg.infrastructure.mongo.KbObjectCollection;
 import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @ApplicationScoped
@@ -41,17 +42,10 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
         if (pipelineId == null || pipelineId.isBlank()) {
             return List.of();
         }
-        List<KbEventCollection> entities = KbEventCollection.list("pipelineId", pipelineId);
-        if (!entities.isEmpty()) {
-            log.info("Found {} kb_events in MongoDB for pipelineId: {}", entities.size(), pipelineId);
-            return entities.stream()
-                    .map(pathwayMapper::toEventModel)
-                    .toList();
-        }
 
-        // Fallback to pubmed-integration REST API if not found in local DB
+        // Primary source: pubmed-integration REST API
         if (pubmedIntegrationRepository != null) {
-            log.info("No kb_events in local DB for pipelineId: {}, fetching from pubmed-integration", pipelineId);
+            log.info("Fetching kb_events from pubmed-integration for pipelineId: {}", pipelineId);
             try {
                 var events = pubmedIntegrationRepository.getEventsByPipeline(pipelineId);
                 if (events != null && !events.isEmpty()) {
@@ -69,36 +63,93 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
             }
         }
 
+        // Fallback to local DB if available
+        List<KbEventCollection> entities = KbEventCollection.list("pipelineId", pipelineId);
+        if (!entities.isEmpty()) {
+            log.info("Found {} kb_events in local MongoDB for pipelineId: {}", entities.size(), pipelineId);
+            return entities.stream()
+                    .map(pathwayMapper::toEventModel)
+                    .toList();
+        }
+
         return List.of();
     }
 
     @Override
-    public List<KbObject> findObjectsByPipelineId(String pipelineId) {
+    public List<PathwayEvent> findEventsByPipelineIdAndRestriction(String pipelineId, String restrictionLevel, List<String> alignedObjects) {
         if (pipelineId == null || pipelineId.isBlank()) {
             return List.of();
         }
-        List<KbObjectCollection> entities = KbObjectCollection.list("pipelineId", pipelineId);
-        if (!entities.isEmpty()) {
-            log.info("Found {} kb_objects in MongoDB for pipelineId: {}", entities.size(), pipelineId);
-            return entities.stream()
-                    .map(pathwayMapper::toKbObjectModel)
-                    .toList();
-        }
 
-        // Fallback to pubmed-integration REST API if not found in local DB
+        // 1. Primary source: pubmed-integration REST API by restriction level
         if (pubmedIntegrationRepository != null) {
-            log.info("No kb_objects in local DB for pipelineId: {}, fetching from pubmed-integration", pipelineId);
+            log.info("Fetching kb_events from pubmed-integration for pipelineId: {} with restrictionLevel: {}",
+                    pipelineId, restrictionLevel);
             try {
-                var objects = pubmedIntegrationRepository.getAllKbObjects(pipelineId);
-                if (objects != null && !objects.isEmpty()) {
-                    log.info("Retrieved {} kb_objects from pubmed-integration for pipelineId: {}", objects.size(), pipelineId);
-                    return objects;
+                var events = pubmedIntegrationRepository.getEventsByRestriction(pipelineId, restrictionLevel, alignedObjects);
+                if (events != null && !events.isEmpty()) {
+                    log.info("Retrieved {} restricted kb_events from pubmed-integration for pipelineId: {} with restrictionLevel: {}",
+                            events.size(), pipelineId, restrictionLevel);
+                    return events.stream()
+                            .map(e -> PathwayEvent.builder()
+                                    .first(e.first())
+                                    .relation(e.relation())
+                                    .second(e.second())
+                                    .build())
+                            .toList();
                 }
             } catch (Exception e) {
-                log.warn("Could not retrieve objects from pubmed-integration for pipelineId {}: {}", pipelineId, e.getMessage());
+                log.warn("Could not retrieve restricted events from pubmed-integration for pipelineId {}: {}", pipelineId, e.getMessage());
             }
         }
 
+        // 2. Fallback to local DB if available
+        List<KbEventCollection> entities = KbEventCollection.list("pipelineId", pipelineId);
+        if (!entities.isEmpty()) {
+            log.info("Applying local restriction fallback on {} kb_events for pipelineId: {}", entities.size(), pipelineId);
+            return filterLocalEntitiesByRestriction(entities, restrictionLevel, alignedObjects);
+        }
+
         return List.of();
+    }
+
+    private List<PathwayEvent> filterLocalEntitiesByRestriction(List<KbEventCollection> entities, String restrictionLevel, List<String> alignedObjects) {
+        if (restrictionLevel == null || restrictionLevel.isBlank()
+                || "UNRESTRICTED".equalsIgnoreCase(restrictionLevel)
+                || "NO_RESTRICTED".equalsIgnoreCase(restrictionLevel)) {
+            return entities.stream().map(pathwayMapper::toEventModel).toList();
+        }
+
+        if (alignedObjects == null || alignedObjects.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        Set<String> alignedSet = alignedObjects.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .map(s -> s.trim().toUpperCase())
+                .collect(Collectors.toSet());
+
+        if (alignedSet.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        if ("VERY_RESTRICTED".equalsIgnoreCase(restrictionLevel)) {
+            return entities.stream()
+                    .filter(e -> e.getFirst() != null && e.getSecond() != null
+                            && alignedSet.contains(e.getFirst().trim().toUpperCase())
+                            && alignedSet.contains(e.getSecond().trim().toUpperCase()))
+                    .map(pathwayMapper::toEventModel)
+                    .toList();
+        }
+
+        if ("RESTRICTED".equalsIgnoreCase(restrictionLevel)) {
+            return entities.stream()
+                    .filter(e -> (e.getFirst() != null && alignedSet.contains(e.getFirst().trim().toUpperCase()))
+                            || (e.getSecond() != null && alignedSet.contains(e.getSecond().trim().toUpperCase())))
+                    .map(pathwayMapper::toEventModel)
+                    .toList();
+        }
+
+        return entities.stream().map(pathwayMapper::toEventModel).toList();
     }
 }

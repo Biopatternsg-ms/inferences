@@ -18,7 +18,11 @@ package com.biopatternsg.application.usecase;
 import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.DynamicInferenceInput;
+import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.KbObject;
+import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
+import java.util.Map;
+import java.util.Optional;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.port.out.PrologInferencePort;
@@ -56,11 +60,14 @@ class InferPathwaysUseCaseDynamicTest {
     @Mock
     private KnowledgeBaseRepository knowledgeBaseRepository;
 
+    @Mock
+    private InferenceRepository inferenceRepository;
+
     private InferPathwaysUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new InferPathwaysUseCase(prologInferencePort, pathwayRepository, knowledgeBaseRepository, "output", 4, 30);
+        useCase = new InferPathwaysUseCase(prologInferencePort, pathwayRepository, knowledgeBaseRepository, inferenceRepository, "output", 4, 30);
     }
 
     @Test
@@ -168,10 +175,26 @@ class InferPathwaysUseCaseDynamicTest {
     @Test
     @DisplayName("Should throw IllegalArgumentException when no events found in KB for pipelineId")
     void shouldThrowWhenNoEventsFoundInKnowledgeBase() {
-        when(knowledgeBaseRepository.findEventsByPipelineId("empty-pipe")).thenReturn(Collections.emptyList());
+        Inference inference = Inference.builder()
+                .pipelineId("empty-pipe")
+                .roles(Map.of("A", List.of("protein")))
+                .build();
+        when(inferenceRepository.findByPipelineId("empty-pipe")).thenReturn(Optional.of(inference));
+        when(knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(eq("empty-pipe"), any(), any()))
+                .thenReturn(Collections.emptyList());
 
         assertThrows(IllegalArgumentException.class, () ->
                 useCase.runPipelineInference("empty-pipe", "user", List.of(), List.of(), false, 10));
+    }
+
+    @Test
+    @DisplayName("Should throw IllegalArgumentException when no biological objects with roles found in inferences collection")
+    void shouldThrowWhenNoObjectsFoundInInferencesCollection() {
+        String pipeId = "pipe-no-objects";
+        when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                useCase.runPipelineInference(pipeId, "user", List.of(), List.of(), false, 10));
     }
 
     @Test
@@ -188,8 +211,18 @@ class InferPathwaysUseCaseDynamicTest {
                 new PathwayEvent("IRF7", "bind", "IRF3")
         );
 
-        when(knowledgeBaseRepository.findEventsByPipelineId(pipeId)).thenReturn(events);
-        when(knowledgeBaseRepository.findObjectsByPipelineId(pipeId)).thenReturn(objects);
+        Map<String, List<String>> rolesMap = Map.of(
+                "IFNA1", List.of("ligand"),
+                "IRF7", List.of("protein"),
+                "IRF3", List.of("transcription_factor")
+        );
+        Inference inference = Inference.builder()
+                .pipelineId(pipeId)
+                .roles(rolesMap)
+                .build();
+
+        when(knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(eq(pipeId), any(), any())).thenReturn(events);
+        when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.of(inference));
 
         DynamicExecutionResult result = useCase.runPipelineInference(
                 pipeId,
@@ -241,5 +274,80 @@ class InferPathwaysUseCaseDynamicTest {
         assertEquals(0, useCase.getPathways("", null, null, null, 0, 10).size());
         assertEquals(0L, useCase.countPathways(""));
         assertEquals(0L, useCase.deletePathways(""));
+    }
+    @Test
+    @DisplayName("Should run pipeline inference loading objects with roles from inferences collection")
+    void shouldRunPipelineInferenceLoadingObjectsFromInferencesCollection() {
+        InferPathwaysUseCase useCaseWithInferenceRepo = new InferPathwaysUseCase(
+                prologInferencePort,
+                pathwayRepository,
+                knowledgeBaseRepository,
+                inferenceRepository,
+                "output",
+                4,
+                30
+        );
+
+        String pipeId = "prod-pipe-inferences-roles";
+        Map<String, List<String>> rolesMap = Map.of(
+                "IFNA1", List.of("ligand"),
+                "IRF7", List.of("protein"),
+                "IRF3", List.of("transcription_factor")
+        );
+        Inference inference = Inference.builder()
+                .pipelineId(pipeId)
+                .roles(rolesMap)
+                .build();
+
+        List<PathwayEvent> events = List.of(
+                new PathwayEvent("IFNA1", "association", "IRF7"),
+                new PathwayEvent("IRF7", "bind", "IRF3")
+        );
+
+        when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.of(inference));
+        when(knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(eq(pipeId), any(), any())).thenReturn(events);
+
+        DynamicExecutionResult result = useCaseWithInferenceRepo.runPipelineInference(
+                pipeId,
+                "investigador_01",
+                List.of("IFNA1", "IRF7", "IRF3"),
+                List.of("IRF3"),
+                false,
+                5
+        );
+
+        assertNotNull(result);
+        assertEquals(pipeId, result.getPipelineId());
+        assertEquals(1, result.getGeneratedPathwaysCount());
+
+        verify(pathwayRepository).savePathwaysBatch(result.getPathways());
+        verify(pathwayRepository).savePathwayGraph(result.getGraph());
+    }
+    @Test
+    @DisplayName("Should pass restrictionLevel from inference and aligned objects to KnowledgeBaseRepository")
+    void shouldPassRestrictionLevelAndAlignedObjectsToKnowledgeBaseRepository() {
+        String pipeId = "pipe-restricted-events";
+        Inference inference = Inference.builder()
+                .pipelineId(pipeId)
+                .restrictionLevel("RESTRICTED")
+                .roles(Map.of("IFNA1", List.of("ligand"), "IRF3", List.of("transcription_factor")))
+                .build();
+        List<PathwayEvent> events = List.of(new PathwayEvent("IFNA1", "association", "IRF3"));
+
+        when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.of(inference));
+        when(knowledgeBaseRepository.findEventsByPipelineIdAndRestriction(eq(pipeId), eq("RESTRICTED"), any()))
+                .thenReturn(events);
+
+        DynamicExecutionResult result = useCase.runPipelineInference(
+                pipeId,
+                "user1",
+                List.of(),
+                List.of(),
+                false,
+                5
+        );
+
+        assertNotNull(result);
+        verify(knowledgeBaseRepository).findEventsByPipelineIdAndRestriction(eq(pipeId), eq("RESTRICTED"), any());
     }
 }

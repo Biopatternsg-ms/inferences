@@ -20,6 +20,7 @@ import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository
 import com.biopatternsg.infrastructure.clients.PubmedIntegrationHttpClient;
 import com.biopatternsg.infrastructure.dtos.AlignedResultResponseDTO;
 import com.biopatternsg.infrastructure.dtos.KbEventDTO;
+import com.biopatternsg.infrastructure.dtos.KbEventsByRestrictionRequestDTO;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;

@@ -15,12 +15,11 @@
  */
 package com.biopatternsg.domain.port.out.repositories;
 
-import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 
 import java.util.List;
 
 public interface KnowledgeBaseRepository {
     List<PathwayEvent> findEventsByPipelineId(String pipelineId);
-    List<KbObject> findObjectsByPipelineId(String pipelineId);
+    List<PathwayEvent> findEventsByPipelineIdAndRestriction(String pipelineId, String restrictionLevel, List<String> alignedObjects);
 }
