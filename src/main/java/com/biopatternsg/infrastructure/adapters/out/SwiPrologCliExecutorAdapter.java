@@ -24,13 +24,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -237,11 +236,11 @@ public class SwiPrologCliExecutorAdapter implements PrologInferencePort {
         String rulesP = normalizePath(rulesPath, useWsl);
 
         // Crear script efímero runner para evitar problemas de escape de comillas y caracteres en bash/wsl
-        java.nio.file.Path tempDir = java.nio.file.Paths.get("target").toAbsolutePath();
-        if (!java.nio.file.Files.exists(tempDir)) {
-            tempDir = java.nio.file.Paths.get(".").toAbsolutePath();
+        Path tempDir = Paths.get("target").toAbsolutePath();
+        if (!Files.exists(tempDir)) {
+            tempDir = Paths.get(".").toAbsolutePath();
         }
-        java.nio.file.Path runnerFile = java.nio.file.Files.createTempFile(tempDir, "prolog_runner_", ".pl");
+        Path runnerFile = Files.createTempFile(tempDir, "prolog_runner_", ".pl");
 
         String runnerContent = String.format(
                 ":- style_check(-discontiguous).\n" +
@@ -255,7 +254,7 @@ public class SwiPrologCliExecutorAdapter implements PrologInferencePort {
                 objP, kbP, rulesP, goal
         );
 
-        java.nio.file.Files.writeString(runnerFile, runnerContent);
+        Files.writeString(runnerFile, runnerContent);
 
         try {
             String runnerPathNormalized = normalizePath(runnerFile.toString(), useWsl);
@@ -311,7 +310,7 @@ public class SwiPrologCliExecutorAdapter implements PrologInferencePort {
 
         } finally {
             try {
-                java.nio.file.Files.deleteIfExists(runnerFile);
+                Files.deleteIfExists(runnerFile);
             } catch (Exception ignored) {
             }
         }
