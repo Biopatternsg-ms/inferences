@@ -20,7 +20,9 @@ import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.port.in.InferPathways;
+import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.in.InferenceUseCase;
+import com.biopatternsg.infrastructure.dtos.FindRolesRequestDTO;
 import com.biopatternsg.infrastructure.dtos.InferenceRequestDTO;
 import com.biopatternsg.infrastructure.dtos.InferenceResponseDTO;
 import com.biopatternsg.infrastructure.dtos.PathwayInferenceRequestDTO;
@@ -35,6 +37,7 @@ import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -43,6 +46,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.context.ManagedExecutor;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
@@ -54,6 +58,7 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @ApplicationScoped
@@ -61,13 +66,47 @@ import java.util.Map;
 @Path("/api/inferences")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@Tag(name = "Inferences", description = "Endpoints for managing model inferences")
+@Tag(name = "Inferences", description = "Endpoints for managing pipeline inferences")
 public class InferenceController {
 
     private final InferenceUseCase inferenceUseCase;
     private final InferenceMapper inferenceMapper;
     private final InferPathways inferPathways;
     private final PathwayMapper pathwayMapper;
+    private final FindRoles findRoles;
+    private final com.biopatternsg.domain.port.in.GetBiologicalObjects getBiologicalObjects;
+    private final com.biopatternsg.domain.port.in.UpdateBiologicalObjects updateBiologicalObjects;
+    private final com.biopatternsg.domain.port.in.ResetBiologicalObjectsRoles resetBiologicalObjectsRoles;
+    private final ManagedExecutor executor;
+
+    @POST
+    @Path("/find-roles")
+    @Operation(summary = "Find biological roles for aligned objects", description = "Triggers the identification of biological roles using MeSH ontology")
+    @APIResponses({
+            @APIResponse(
+                    responseCode = "202",
+                    description = "Find roles process initiated successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = Map.class))
+            ),
+            @APIResponse(responseCode = "400", description = "Invalid request payload")
+    })
+    public Response findRoles(@Valid FindRolesRequestDTO requestDTO, @HeaderParam("x-user-id") String userId) {
+        int objectsCount = (requestDTO.getAlignedObjects() != null) ? requestDTO.getAlignedObjects().size() : 0;
+        log.info("Received request to find roles for pipeline: {} with {} aligned objects",
+                requestDTO.getPipelineId(), objectsCount);
+        CompletableFuture.runAsync(() -> {
+            try {
+                findRoles.execute(requestDTO.getPipelineId(), requestDTO.getAlignedObjects(), userId);
+            } catch (Exception e) {
+                log.error("Error executing findRoles asynchronously for pipeline: {}", requestDTO.getPipelineId(), e);
+            }
+        }, executor);
+
+        return Response.accepted(Map.of(
+                "message", "Find roles process initiated",
+                "pipelineId", requestDTO.getPipelineId()
+        )).build();
+    }
 
     @GET
     @Path("/ping")
@@ -223,21 +262,39 @@ public class InferenceController {
 
 
     @POST
-    @Operation(summary = "Create an inference record", description = "Persists a new inference execution into MongoDB")
+    @Operation(summary = "Save inference configuration", description = "Persists or updates inference restriction level for a pipeline in MongoDB")
     @APIResponses({
             @APIResponse(
                     responseCode = "201",
-                    description = "Inference created successfully",
+                    description = "Inference configuration saved successfully",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = InferenceResponseDTO.class))
             ),
             @APIResponse(responseCode = "400", description = "Invalid request payload")
     })
-    public Response createInference(@Valid InferenceRequestDTO requestDTO) {
-        log.info("Received request to create inference for model: {}", requestDTO.getModelName());
+    public Response createInference(@Valid InferenceRequestDTO requestDTO, @HeaderParam("x-user-id") String userId) {
+        log.info("Received request to save inference configuration for pipeline: {}", requestDTO.getPipelineId());
         Inference domainModel = inferenceMapper.toModel(requestDTO);
-        Inference saved = inferenceUseCase.createInference(domainModel);
+        Inference saved = inferenceUseCase.createInference(domainModel, userId);
         InferenceResponseDTO responseDTO = inferenceMapper.toResponseDTO(saved);
-        return Response.created(URI.create("/api/inferences/" + responseDTO.getId())).entity(responseDTO).build();
+        return Response.created(URI.create("/inferences/" + responseDTO.getId())).entity(responseDTO).build();
+    }
+
+    @GET
+    @Path("/pipeline/{pipelineId}")
+    @Operation(summary = "Get inference configuration by pipelineId", description = "Retrieves the inference configuration associated with a pipeline")
+    @APIResponses({
+            @APIResponse(
+                    responseCode = "200",
+                    description = "Inference configuration found",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = InferenceResponseDTO.class))
+            ),
+            @APIResponse(responseCode = "404", description = "Inference configuration not found")
+    })
+    public Response getByPipelineId(@PathParam("pipelineId") String pipelineId) {
+        return inferenceUseCase.getByPipelineId(pipelineId)
+                .map(inferenceMapper::toResponseDTO)
+                .map(dto -> Response.ok(dto).build())
+                .orElse(Response.status(Response.Status.NOT_FOUND).build());
     }
 
     @GET
@@ -270,5 +327,64 @@ public class InferenceController {
                 .map(inferenceMapper::toResponseDTO)
                 .map(dto -> Response.ok(dto).build())
                 .orElse(Response.status(Response.Status.NOT_FOUND).build());
+    }
+
+    @GET
+    @Path("/biological-objects/{pipelineId}")
+    @Operation(summary = "Get biological objects with unified roles", description = "Retrieves evaluated biological objects with unified MeSH roles and biotypes")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Biological objects retrieved successfully"),
+            @APIResponse(responseCode = "404", description = "Inference configuration not found")
+    })
+    public Response getBiologicalObjects(@PathParam("pipelineId") String pipelineId) {
+        log.info("Received request to get biological objects for pipeline: {}", pipelineId);
+        List<com.biopatternsg.domain.model.BiologicalObject> domainList = getBiologicalObjects.execute(pipelineId);
+        List<com.biopatternsg.infrastructure.dtos.BiologicalObjectDTO> dtos = domainList.stream()
+                .map(bo -> new com.biopatternsg.infrastructure.dtos.BiologicalObjectDTO(
+                        bo.name(),
+                        bo.synonyms(),
+                        bo.biotypes(),
+                        bo.meshRoles(),
+                        bo.roles()
+                ))
+                .toList();
+        return Response.ok(dtos).build();
+    }
+
+    @PUT
+    @Path("/biological-objects/{pipelineId}")
+    @Operation(summary = "Update biological objects roles", description = "Persists edited roles to kb_objects and completes the UPDATE_BIOLOGICAL_OBJECTS step")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Biological objects roles updated successfully"),
+            @APIResponse(responseCode = "400", description = "Invalid request payload")
+    })
+    public Response updateBiologicalObjects(
+            @PathParam("pipelineId") String pipelineId,
+            @Valid com.biopatternsg.infrastructure.dtos.UpdateBiologicalObjectsRequestDTO requestDTO,
+            @HeaderParam("x-user-id") String userId
+    ) {
+        log.info("Received request to update biological objects roles for pipeline: {}", pipelineId);
+        if (requestDTO == null || requestDTO.roles() == null) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("message", "Payload with roles map is required"))
+                    .build();
+        }
+        updateBiologicalObjects.execute(pipelineId, requestDTO.roles(), userId);
+        return Response.ok(Map.of("message", "Biological objects roles updated successfully", "pipelineId", pipelineId)).build();
+    }
+
+    @DELETE
+    @Path("/biological-objects/{pipelineId}/roles")
+    @Operation(summary = "Reset biological objects roles", description = "Resets biological objects roles back to the initial biotypes and MeSH evaluation")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Biological objects roles reset successfully")
+    })
+    public Response resetBiologicalObjectsRoles(
+            @PathParam("pipelineId") String pipelineId,
+            @HeaderParam("x-user-id") String userId
+    ) {
+        log.info("Received request to reset biological objects roles for pipeline: {}", pipelineId);
+        resetBiologicalObjectsRoles.execute(pipelineId, userId);
+        return Response.ok(Map.of("message", "Biological objects roles reset successfully", "pipelineId", pipelineId)).build();
     }
 }

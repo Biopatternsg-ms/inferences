@@ -21,7 +21,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface InferenceUseCase {
-    Inference createInference(Inference inference);
+    Inference createInference(Inference inference, String userId);
+    Optional<Inference> getByPipelineId(String pipelineId);
     Optional<Inference> getInferenceById(String id);
     List<Inference> getAllInferences();
 }

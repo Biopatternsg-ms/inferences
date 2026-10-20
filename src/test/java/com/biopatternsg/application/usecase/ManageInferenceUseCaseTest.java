@@ -16,6 +16,7 @@
 package com.biopatternsg.application.usecase;
 
 import com.biopatternsg.domain.model.Inference;
+import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +43,9 @@ class ManageInferenceUseCaseTest {
     @Mock
     private InferenceRepository inferenceRepository;
 
+    @Mock
+    private ConfigAndControlRepository configAndControlRepository;
+
     @InjectMocks
     private ManageInferenceUseCase manageInferenceUseCase;
 
@@ -51,30 +55,45 @@ class ManageInferenceUseCaseTest {
     void setUp() {
         sampleInference = Inference.builder()
                 .id("60c72b2f9b1d8b2bad000001")
-                .modelName("dna-promoter-analyzer")
-                .modelVersion("1.0.0")
-                .status("COMPLETED")
-                .inputData(Map.of("sequence", "ATGCGATCG"))
-                .outputData(Map.of("score", 0.95))
-                .confidence(0.95)
+                .pipelineId("pipeline-123")
+                .restrictionLevel("RESTRICTED")
                 .build();
     }
 
     @Test
-    @DisplayName("createInference sets timestamp and saves inference")
+    @DisplayName("createInference saves inference configuration and updates pipeline step")
     void testCreateInference() {
         when(inferenceRepository.save(any(Inference.class))).thenReturn(sampleInference);
 
         Inference input = Inference.builder()
-                .modelName("dna-promoter-analyzer")
-                .modelVersion("1.0.0")
+                .pipelineId("pipeline-123")
+                .restrictionLevel("RESTRICTED")
                 .build();
 
-        Inference created = manageInferenceUseCase.createInference(input);
+        Inference created = manageInferenceUseCase.createInference(input, "user-123");
 
         assertNotNull(created);
-        assertEquals("dna-promoter-analyzer", created.getModelName());
+        assertEquals("pipeline-123", created.getPipelineId());
+        assertEquals("RESTRICTED", created.getRestrictionLevel());
         verify(inferenceRepository).save(any(Inference.class));
+        verify(configAndControlRepository).updateStep(
+                "pipeline-123",
+                "CONFIGURE_INFERENCES",
+                "COMPLETED",
+                "user-123",
+                Map.of("Restriction Level", "RESTRICTED")
+        );
+    }
+
+    @Test
+    @DisplayName("getByPipelineId returns inference when found")
+    void testGetByPipelineId() {
+        when(inferenceRepository.findByPipelineId("pipeline-123")).thenReturn(Optional.of(sampleInference));
+
+        Optional<Inference> result = manageInferenceUseCase.getByPipelineId("pipeline-123");
+
+        assertTrue(result.isPresent());
+        assertEquals("RESTRICTED", result.get().getRestrictionLevel());
     }
 
     @Test
@@ -96,6 +115,6 @@ class ManageInferenceUseCaseTest {
         List<Inference> list = manageInferenceUseCase.getAllInferences();
 
         assertEquals(1, list.size());
-        assertEquals("dna-promoter-analyzer", list.get(0).getModelName());
+        assertEquals("pipeline-123", list.get(0).getPipelineId());
     }
 }

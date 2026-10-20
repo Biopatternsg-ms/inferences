@@ -21,7 +21,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.time.Instant;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Getter
@@ -31,11 +33,15 @@ import java.util.Map;
 @AllArgsConstructor
 public class Inference {
     private String id;
-    private String modelName;
-    private String modelVersion;
-    private String status;
-    private Map<String, Object> inputData;
-    private Map<String, Object> outputData;
-    private Double confidence;
-    private Instant createdAt;
+    private String pipelineId;
+    private String restrictionLevel;
+    private Map<String, List<String>> roles;
+
+    public Map<String, List<String>> getRoles() {
+        return roles != null ? Collections.unmodifiableMap(roles) : null;
+    }
+
+    public void setRoles(Map<String, List<String>> roles) {
+        this.roles = roles != null ? new HashMap<>(roles) : null;
+    }
 }
