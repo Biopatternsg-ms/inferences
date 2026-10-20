@@ -15,34 +15,44 @@
  */
 package com.biopatternsg.domain.model;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.EqualsAndHashCode;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.ToString;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-@ToString
-@EqualsAndHashCode
-public class KbObject {
-    private String pipelineId;
-    private String name;
+@Builder(toBuilder = true)
+public record KbObject(
+        String pipelineId,
+        String name,
+        List<String> synonyms,
+        List<String> biotypes,
+        List<String> roles
+) {
+    public KbObject(String name, List<String> synonyms, List<String> biotypes, List<String> roles) {
+        this(null, name, synonyms, biotypes, roles);
+    }
 
-    @Builder.Default
-    private List<String> synonyms = new ArrayList<>();
+    public KbObject(String name, List<String> synonyms, List<String> biotypes) {
+        this(null, name, synonyms, biotypes, Collections.emptyList());
+    }
 
-    @Builder.Default
-    private List<String> biotypes = new ArrayList<>();
+    public String getName() {
+        return name();
+    }
 
-    @Builder.Default
-    private List<String> roles = new ArrayList<>();
+    public List<String> getSynonyms() {
+        return synonyms();
+    }
+
+    public List<String> getBiotypes() {
+        return biotypes();
+    }
+
+    public List<String> getRoles() {
+        return roles();
+    }
+
+    public String getPipelineId() {
+        return pipelineId();
+    }
 }
