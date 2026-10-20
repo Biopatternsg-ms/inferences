@@ -118,6 +118,45 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
     }
 
     @Override
+    public List<KbEvent> getEventsByRestriction(String pipelineId, String restrictionLevel, List<String> alignedObjects) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            KbEventsByRestrictionRequestDTO request = new KbEventsByRestrictionRequestDTO(restrictionLevel, alignedObjects);
+            List<KbEventDTO> dtos = pubmedIntegrationHttpClient.getKbEventsByRestriction(pipelineId, request);
+            if (dtos == null || dtos.isEmpty()) {
+                log.debug("No restricted events found in pubmed-integration for pipelineId: {} and level: {}", pipelineId, restrictionLevel);
+                return Collections.emptyList();
+            }
+
+            return dtos.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(dto -> new KbEvent(
+                            dto.pipelineId(),
+                            dto.first(),
+                            dto.relation(),
+                            dto.second(),
+                            dto.pubmedIds()
+                    ))
+                    .toList();
+
+        } catch (WebApplicationException e) {
+            if (e.getResponse() != null && e.getResponse().getStatus() == 404) {
+                log.debug("Restricted events not found (404) in pubmed-integration for pipelineId: {}", pipelineId);
+            } else {
+                log.warn("Error calling pubmed-integration for pipelineId: {} by restriction: {}", pipelineId, e.getMessage());
+            }
+            return Collections.emptyList();
+        } catch (Exception e) {
+            log.warn("Unexpected error fetching restricted events from pubmed-integration for pipelineId: {}: {}",
+                    pipelineId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    @Override
     public List<com.biopatternsg.domain.model.KbObject> getAllKbObjects(String pipelineId) {
         if (pipelineId == null || pipelineId.isBlank()) {
             return Collections.emptyList();
