@@ -1200,15 +1200,6 @@ run :-
         }
     }
 
-    private List<KbObject> resolveBiologicalObjects(String pipelineId) {
-        if (inferenceRepository == null) {
-            throw new IllegalStateException("InferenceRepository is not configured for pipeline inference");
-        }
-        Inference inference = inferenceRepository.findByPipelineId(pipelineId)
-                .orElseThrow(() -> new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId));
-        return resolveBiologicalObjects(inference, pipelineId);
-    }
-
     private List<KbObject> resolveBiologicalObjects(Inference inference, String pipelineId) {
         if (inference == null) {
             throw new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId);
