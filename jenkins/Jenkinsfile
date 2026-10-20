@@ -21,6 +21,8 @@ pipeline {
         // Stage A: Run unit tests.
         stage('Test') {
             steps {
+                echo "--- Ensuring SWI-Prolog is available in CI agent ---"
+                sh 'which swipl || (apt-get update && apt-get install -y --no-install-recommends swi-prolog-nox)'
                 echo "--- Running Unit Tests ---"
                 sh 'mvn test'
             }
@@ -99,6 +101,7 @@ pipeline {
                         // Run the new container.
                         sh """
                         docker run -d \\
+                            --shm-size=256m \\
                             -e DB_USER='${MONGO_USER}' \\
                             -e DB_PASSWORD='${MONGO_PASSWORD}' \\
                             -e DB_URL='${MONGO_DB_URL}' \\
