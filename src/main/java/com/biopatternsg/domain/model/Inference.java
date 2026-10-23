@@ -36,6 +36,7 @@ public class Inference {
     private String pipelineId;
     private String restrictionLevel;
     private Map<String, List<String>> roles;
+    private List<String> closingObjects;
 
     public Map<String, List<String>> getRoles() {
         return roles != null ? Collections.unmodifiableMap(roles) : null;
@@ -43,5 +44,13 @@ public class Inference {
 
     public void setRoles(Map<String, List<String>> roles) {
         this.roles = roles != null ? new HashMap<>(roles) : null;
+    }
+
+    public List<String> getClosingObjects() {
+        return closingObjects != null ? Collections.unmodifiableList(closingObjects) : null;
+    }
+
+    public void setClosingObjects(List<String> closingObjects) {
+        this.closingObjects = closingObjects != null ? new java.util.ArrayList<>(closingObjects) : null;
     }
 }

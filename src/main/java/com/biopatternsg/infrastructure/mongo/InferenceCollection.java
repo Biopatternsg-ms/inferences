@@ -32,4 +32,5 @@ public class InferenceCollection extends PanacheMongoEntity {
     private String pipelineId;
     private String restrictionLevel;
     private Map<String, List<String>> roles;
+    private List<String> closingObjects;
 }

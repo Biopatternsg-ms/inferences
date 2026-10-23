@@ -20,6 +20,8 @@ import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.port.in.InferPathways;
+import com.biopatternsg.domain.port.in.SaveClosingObjects;
+import com.biopatternsg.infrastructure.dtos.SaveClosingObjectsRequestDTO;
 import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.in.InferenceUseCase;
 import com.biopatternsg.infrastructure.dtos.FindRolesRequestDTO;
@@ -77,6 +79,7 @@ public class InferenceController {
     private final com.biopatternsg.domain.port.in.GetBiologicalObjects getBiologicalObjects;
     private final com.biopatternsg.domain.port.in.UpdateBiologicalObjects updateBiologicalObjects;
     private final com.biopatternsg.domain.port.in.ResetBiologicalObjectsRoles resetBiologicalObjectsRoles;
+    private final SaveClosingObjects saveClosingObjects;
     private final ManagedExecutor executor;
 
     @POST
@@ -386,5 +389,52 @@ public class InferenceController {
         log.info("Received request to reset biological objects roles for pipeline: {}", pipelineId);
         resetBiologicalObjectsRoles.execute(pipelineId, userId);
         return Response.ok(Map.of("message", "Biological objects roles reset successfully", "pipelineId", pipelineId)).build();
+    }
+
+    @GET
+    @Path("/closing-objects/{pipelineId}")
+    @Operation(summary = "Get configured closing objects for pipeline", description = "Retrieves previously saved target closing objects for the pipeline")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Closing objects retrieved successfully")
+    })
+    public Response getClosingObjects(@PathParam("pipelineId") String pipelineId) {
+        log.info("Received request to get closing objects for pipeline: {}", pipelineId);
+        List<String> closingObjects = saveClosingObjects.getClosingObjects(pipelineId);
+        return Response.ok(Map.of(
+                "pipelineId", pipelineId,
+                "closingObjects", closingObjects != null ? closingObjects : List.of()
+        )).build();
+    }
+
+    @POST
+    @Path("/closing-objects/{pipelineId}")
+    @Operation(summary = "Save closing objects and trigger pathway inference",
+            description = "Saves selected target closing objects (some, all, or none) and triggers pathway inference.")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Pathway inference executed successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = PathwayInferenceResponseDTO.class))),
+            @APIResponse(responseCode = "400", description = "Invalid request payload")
+    })
+    public Response saveClosingObjects(
+            @PathParam("pipelineId") String pipelineId,
+            SaveClosingObjectsRequestDTO requestDTO,
+            @HeaderParam("x-user-id") String userId
+    ) {
+        log.info("Received request to save closing objects and trigger inference for pipeline: {}", pipelineId);
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("message", "Path parameter 'pipelineId' is required"))
+                    .build();
+        }
+
+        List<String> closingObjects = (requestDTO != null && requestDTO.closingObjects() != null)
+                ? requestDTO.closingObjects()
+                : List.of();
+        Boolean summarize = requestDTO != null ? requestDTO.summarizeKb() : null;
+        Integer maxDepth = requestDTO != null ? requestDTO.maxDepth() : null;
+
+        DynamicExecutionResult result = saveClosingObjects.execute(pipelineId, closingObjects, summarize, maxDepth, userId);
+        PathwayInferenceResponseDTO response = pathwayMapper.toResponseDTO(result);
+        return Response.ok(response).build();
     }
 }

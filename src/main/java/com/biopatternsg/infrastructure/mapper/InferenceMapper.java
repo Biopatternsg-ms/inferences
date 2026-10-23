@@ -44,6 +44,7 @@ public class InferenceMapper {
                 .pipelineId(model.getPipelineId())
                 .restrictionLevel(model.getRestrictionLevel())
                 .roles(model.getRoles())
+                .closingObjects(model.getClosingObjects())
                 .build();
     }
 
@@ -58,6 +59,7 @@ public class InferenceMapper {
         entity.setPipelineId(model.getPipelineId());
         entity.setRestrictionLevel(model.getRestrictionLevel());
         entity.setRoles(model.getRoles());
+        entity.setClosingObjects(model.getClosingObjects());
         return entity;
     }
 
@@ -70,6 +72,7 @@ public class InferenceMapper {
                 .pipelineId(entity.getPipelineId())
                 .restrictionLevel(entity.getRestrictionLevel())
                 .roles(entity.getRoles())
+                .closingObjects(entity.getClosingObjects())
                 .build();
     }
 }

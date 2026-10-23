@@ -34,4 +34,5 @@ public class InferenceResponseDTO {
     private String pipelineId;
     private String restrictionLevel;
     private Map<String, List<String>> roles;
+    private List<String> closingObjects;
 }
