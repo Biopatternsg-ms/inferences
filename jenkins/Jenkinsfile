@@ -73,7 +73,7 @@ pipeline {
                     def localImageName = "${CONTAINER_NAME}:latest"
 
                     echo "--- Building Local Docker Image: ${localImageName} ---"
-                    sh "docker build -t ${localImageName} ."
+                    sh "docker build --pull --no-cache -t ${localImageName} ."
                     echo "--- Docker image built successfully! ---"
                 }
             }
