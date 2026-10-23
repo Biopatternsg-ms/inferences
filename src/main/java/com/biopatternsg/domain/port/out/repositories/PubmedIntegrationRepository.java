@@ -24,6 +24,7 @@ import java.util.Map;
 public interface PubmedIntegrationRepository {
     List<KbEvent> getEventsByTerm(String pipelineId, String term);
     List<KbEvent> getEventsByPipeline(String pipelineId);
+    List<KbEvent> getEventsByRestriction(String pipelineId, String restrictionLevel, List<String> alignedObjects);
     List<KbObject> getAllKbObjects(String pipelineId);
     void updateKbObjectRoles(String pipelineId, Map<String, List<String>> roles);
     void resetKbObjectRoles(String pipelineId);

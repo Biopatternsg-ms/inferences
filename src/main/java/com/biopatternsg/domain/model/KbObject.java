@@ -15,16 +15,44 @@
  */
 package com.biopatternsg.domain.model;
 
+import lombok.Builder;
+
 import java.util.Collections;
 import java.util.List;
 
+@Builder(toBuilder = true)
 public record KbObject(
+        String pipelineId,
         String name,
         List<String> synonyms,
         List<String> biotypes,
         List<String> roles
 ) {
+    public KbObject(String name, List<String> synonyms, List<String> biotypes, List<String> roles) {
+        this(null, name, synonyms, biotypes, roles);
+    }
+
     public KbObject(String name, List<String> synonyms, List<String> biotypes) {
-        this(name, synonyms, biotypes, Collections.emptyList());
+        this(null, name, synonyms, biotypes, Collections.emptyList());
+    }
+
+    public String getName() {
+        return name();
+    }
+
+    public List<String> getSynonyms() {
+        return synonyms();
+    }
+
+    public List<String> getBiotypes() {
+        return biotypes();
+    }
+
+    public List<String> getRoles() {
+        return roles();
+    }
+
+    public String getPipelineId() {
+        return pipelineId();
     }
 }

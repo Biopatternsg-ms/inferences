@@ -15,16 +15,24 @@
  */
 package com.biopatternsg.infrastructure.clients;
 
+import com.biopatternsg.infrastructure.dtos.AlignedResultResponseDTO;
 import com.biopatternsg.infrastructure.dtos.KbEventDTO;
+import com.biopatternsg.infrastructure.dtos.KbEventsByRestrictionRequestDTO;
+import com.biopatternsg.infrastructure.dtos.KbObjectDTO;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.PATCH;
+import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 
 import java.util.List;
+import java.util.Map;
 
 @RegisterRestClient(configKey = "pubmed-integration-api")
 @Produces(MediaType.APPLICATION_JSON)
@@ -44,28 +52,35 @@ public interface PubmedIntegrationHttpClient {
             @PathParam("pipelineId") String pipelineId
     );
 
+    @POST
+    @Path("/pubmed/kb-events/{pipelineId}/by-restriction")
+    List<KbEventDTO> getKbEventsByRestriction(
+            @PathParam("pipelineId") String pipelineId,
+            KbEventsByRestrictionRequestDTO request
+    );
+
     @GET
     @Path("/pubmed/kb-objects/{pipelineId}/all")
-    List<com.biopatternsg.infrastructure.dtos.KbObjectDTO> getAllKbObjects(
+    List<KbObjectDTO> getAllKbObjects(
             @PathParam("pipelineId") String pipelineId
     );
 
-    @jakarta.ws.rs.PATCH
+    @PATCH
     @Path("/pubmed/kb-objects/{pipelineId}/roles")
-    jakarta.ws.rs.core.Response updateKbObjectRoles(
+    Response updateKbObjectRoles(
             @PathParam("pipelineId") String pipelineId,
-            java.util.Map<String, List<String>> rolesMap
+            Map<String, List<String>> rolesMap
     );
 
-    @jakarta.ws.rs.DELETE
+    @DELETE
     @Path("/pubmed/kb-objects/{pipelineId}/roles")
-    jakarta.ws.rs.core.Response resetKbObjectRoles(
+    Response resetKbObjectRoles(
             @PathParam("pipelineId") String pipelineId
     );
 
     @GET
     @Path("/pubmed/aligned-results/{pipelineId}")
-    com.biopatternsg.infrastructure.dtos.AlignedResultResponseDTO getAlignedResults(
+    AlignedResultResponseDTO getAlignedResults(
             @PathParam("pipelineId") String pipelineId
     );
 }
