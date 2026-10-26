@@ -423,10 +423,13 @@ public class InferenceController {
     @POST
     @Path("/closing-objects/{pipelineId}")
     @Operation(summary = "Save closing objects and trigger pathway inference",
-            description = "Saves selected target closing objects (some, all, or none) and triggers pathway inference.")
+            description = "Asynchronously saves selected target closing objects and triggers pathway inference.")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Pathway inference executed successfully",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = PathwayInferenceResponseDTO.class))),
+            @APIResponse(
+                    responseCode = "202",
+                    description = "Pathway inference process initiated successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = Map.class))
+            ),
             @APIResponse(responseCode = "400", description = "Invalid request payload")
     })
     public Response saveClosingObjects(
@@ -447,8 +450,17 @@ public class InferenceController {
         Boolean summarize = requestDTO != null ? requestDTO.summarizeKb() : null;
         Integer maxDepth = requestDTO != null ? requestDTO.maxDepth() : null;
 
-        DynamicExecutionResult result = saveClosingObjects.execute(pipelineId, closingObjects, summarize, maxDepth, userId);
-        PathwayInferenceResponseDTO response = pathwayMapper.toResponseDTO(result);
-        return Response.ok(response).build();
+        CompletableFuture.runAsync(() -> {
+            try {
+                saveClosingObjects.execute(pipelineId, closingObjects, summarize, maxDepth, userId);
+            } catch (Exception e) {
+                log.error("Error executing saveClosingObjects asynchronously for pipeline: {}", pipelineId, e);
+            }
+        }, executor);
+
+        return Response.accepted(Map.of(
+                "message", "Pathway inference process initiated",
+                "pipelineId", pipelineId
+        )).build();
     }
 }
