@@ -50,37 +50,48 @@ public class UpdateBiologicalObjectsUseCase implements UpdateBiologicalObjects {
             throw new IllegalArgumentException("PipelineId and roles map must not be null or blank");
         }
 
-        pubmedIntegrationRepository.updateKbObjectRoles(pipelineId, roles);
+        try {
+            pubmedIntegrationRepository.updateKbObjectRoles(pipelineId, roles);
 
-        Optional<Inference> inferenceOpt = inferenceRepository.findByPipelineId(pipelineId);
-        if (inferenceOpt.isPresent()) {
-            Inference inference = inferenceOpt.get();
-            inference.setRoles(roles);
-            inferenceRepository.save(inference);
+            Optional<Inference> inferenceOpt = inferenceRepository.findByPipelineId(pipelineId);
+            if (inferenceOpt.isPresent()) {
+                Inference inference = inferenceOpt.get();
+                inference.setRoles(roles);
+                inferenceRepository.save(inference);
+            }
+
+            int totalObjects = roles.size();
+            long objectsWithRoles = roles.values().stream()
+                    .filter(r -> r != null && !r.isEmpty())
+                    .count();
+            long totalRolesAssigned = roles.values().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .mapToInt(List::size)
+                    .sum();
+
+            Map<String, String> metrics = new LinkedHashMap<>();
+            metrics.put("totalBiologicalObjects", String.valueOf(totalObjects));
+            metrics.put("objectsWithRoles", String.valueOf(objectsWithRoles));
+            metrics.put("totalRolesAssigned", String.valueOf(totalRolesAssigned));
+            metrics.put("statusMessage", "Biological objects and roles confirmed by user");
+
+            configAndControlRepository.updateStep(
+                    pipelineId,
+                    STEP_UPDATE_BIOLOGICAL_OBJECTS,
+                    STATUS_COMPLETED,
+                    userId,
+                    metrics
+            );
+            log.info("Step UPDATE_BIOLOGICAL_OBJECTS completed successfully for pipelineId: {}", pipelineId);
+        } catch (Exception e) {
+            log.error("Error executing UpdateBiologicalObjects for pipeline {}: {}", pipelineId, e.getMessage(), e);
+            configAndControlRepository.updateStep(
+                    pipelineId,
+                    STEP_UPDATE_BIOLOGICAL_OBJECTS,
+                    "FAILED",
+                    userId,
+                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error updating biological objects")
+            );
         }
-
-        int totalObjects = roles.size();
-        long objectsWithRoles = roles.values().stream()
-                .filter(r -> r != null && !r.isEmpty())
-                .count();
-        long totalRolesAssigned = roles.values().stream()
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(List::size)
-                .sum();
-
-        Map<String, String> metrics = new LinkedHashMap<>();
-        metrics.put("totalBiologicalObjects", String.valueOf(totalObjects));
-        metrics.put("objectsWithRoles", String.valueOf(objectsWithRoles));
-        metrics.put("totalRolesAssigned", String.valueOf(totalRolesAssigned));
-        metrics.put("statusMessage", "Biological objects and roles confirmed by user");
-
-        configAndControlRepository.updateStep(
-                pipelineId,
-                STEP_UPDATE_BIOLOGICAL_OBJECTS,
-                STATUS_COMPLETED,
-                userId,
-                metrics
-        );
-        log.info("Step UPDATE_BIOLOGICAL_OBJECTS completed successfully for pipelineId: {}", pipelineId);
     }
 }

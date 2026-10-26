@@ -285,4 +285,36 @@ class InferenceControllerTest {
                 .then()
                 .statusCode(400);
     }
+
+    @Test
+    @DisplayName("PUT /inferences/biological-objects/{pipelineId} should return 202 when request is valid")
+    void testUpdateBiologicalObjects_Accepted() {
+        given()
+                .contentType("application/json")
+                .header("x-user-id", "test-user-1")
+                .body("""
+                        {
+                            "roles": {
+                                "TP53": ["PROTEIN"]
+                            }
+                        }
+                        """)
+                .when().put("/inferences/biological-objects/pipeline-test-123")
+                .then()
+                .statusCode(202)
+                .body("message", equalTo("Update biological objects roles initiated"))
+                .body("pipelineId", equalTo("pipeline-test-123"));
+    }
+
+    @Test
+    @DisplayName("PUT /inferences/biological-objects/{pipelineId} should return 400 when body is missing roles")
+    void testUpdateBiologicalObjects_BadRequestWhenRolesNull() {
+        given()
+                .contentType("application/json")
+                .header("x-user-id", "test-user-1")
+                .body("{}")
+                .when().put("/inferences/biological-objects/pipeline-test-123")
+                .then()
+                .statusCode(400);
+    }
 }

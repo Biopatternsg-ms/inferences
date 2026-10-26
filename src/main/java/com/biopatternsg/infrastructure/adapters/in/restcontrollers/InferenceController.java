@@ -356,9 +356,13 @@ public class InferenceController {
 
     @PUT
     @Path("/biological-objects/{pipelineId}")
-    @Operation(summary = "Update biological objects roles", description = "Persists edited roles to kb_objects and completes the UPDATE_BIOLOGICAL_OBJECTS step")
+    @Operation(summary = "Update biological objects roles", description = "Persists edited roles to kb_objects asynchronously and completes the UPDATE_BIOLOGICAL_OBJECTS step")
     @APIResponses({
-            @APIResponse(responseCode = "200", description = "Biological objects roles updated successfully"),
+            @APIResponse(
+                    responseCode = "202",
+                    description = "Update biological objects roles process initiated successfully",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = Map.class))
+            ),
             @APIResponse(responseCode = "400", description = "Invalid request payload")
     })
     public Response updateBiologicalObjects(
@@ -372,8 +376,18 @@ public class InferenceController {
                     .entity(Map.of("message", "Payload with roles map is required"))
                     .build();
         }
-        updateBiologicalObjects.execute(pipelineId, requestDTO.roles(), userId);
-        return Response.ok(Map.of("message", "Biological objects roles updated successfully", "pipelineId", pipelineId)).build();
+        CompletableFuture.runAsync(() -> {
+            try {
+                updateBiologicalObjects.execute(pipelineId, requestDTO.roles(), userId);
+            } catch (Exception e) {
+                log.error("Error executing updateBiologicalObjects asynchronously for pipeline: {}", pipelineId, e);
+            }
+        }, executor);
+
+        return Response.accepted(Map.of(
+                "message", "Update biological objects roles initiated",
+                "pipelineId", pipelineId
+        )).build();
     }
 
     @DELETE
