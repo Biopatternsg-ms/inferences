@@ -317,4 +317,24 @@ class InferenceControllerTest {
                 .then()
                 .statusCode(400);
     }
+
+    @Test
+    @DisplayName("POST /inferences/closing-objects/{pipelineId} should return 202 when request is valid")
+    void testSaveClosingObjects_Accepted() {
+        given()
+                .contentType("application/json")
+                .header("x-user-id", "test-user-1")
+                .body("""
+                        {
+                            "closingObjects": ["IRF3"],
+                            "summarizeKb": false,
+                            "maxDepth": 10
+                        }
+                        """)
+                .when().post("/inferences/closing-objects/pipeline-test-123")
+                .then()
+                .statusCode(202)
+                .body("message", equalTo("Pathway inference process initiated"))
+                .body("pipelineId", equalTo("pipeline-test-123"));
+    }
 }
