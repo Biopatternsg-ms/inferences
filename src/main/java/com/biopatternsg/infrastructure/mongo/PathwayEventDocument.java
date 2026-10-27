@@ -27,6 +27,7 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PathwayEventDocument {
+    private String id;
     private String first;
     private String relation;
     private String second;

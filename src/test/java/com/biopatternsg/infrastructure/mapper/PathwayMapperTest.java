@@ -57,8 +57,8 @@ class PathwayMapperTest {
                 .startObject("IFNA1")
                 .endObject("IRF3")
                 .events(List.of(
-                        new PathwayEvent("IFNA1", "association", "IRF7", 1),
-                        new PathwayEvent("IRF7", "bind", "IRF3", 2)
+                        new PathwayEvent("ev-1", "IFNA1", "association", "IRF7", 1),
+                        new PathwayEvent("ev-2", "IRF7", "bind", "IRF3", 2)
                 ))
                 .objects(List.of(
                         new PathwayObject("IFNA1", "ligand"),
@@ -73,6 +73,7 @@ class PathwayMapperTest {
         assertEquals("user-test", entity.getUser());
         assertEquals(2, entity.getLength());
         assertEquals(2, entity.getEvents().size());
+        assertEquals("ev-1", entity.getEvents().get(0).getId());
         assertEquals(1, entity.getEvents().get(0).getPosition());
         assertEquals("ligand", entity.getObjects().get(0).getRole());
 
@@ -82,6 +83,7 @@ class PathwayMapperTest {
         assertEquals(entity.id.toHexString(), convertedBack.getId());
         assertEquals("p-123", convertedBack.getPipelineId());
         assertEquals(2, convertedBack.getEvents().size());
+        assertEquals("ev-1", convertedBack.getEvents().get(0).getId());
         assertEquals(3, convertedBack.getObjects().size());
         assertEquals("IFNA1", convertedBack.getStartObject());
     }
@@ -123,6 +125,7 @@ class PathwayMapperTest {
     @DisplayName("Should map KbEventCollection and KbObjectCollection to domain models")
     void shouldMapKbEntitiesToDomain() {
         KbEventCollection kbEvent = new KbEventCollection();
+        kbEvent.id = new ObjectId();
         kbEvent.setPipelineId("pipe-1");
         kbEvent.setFirst("IFNA1");
         kbEvent.setRelation("bind");
@@ -131,6 +134,7 @@ class PathwayMapperTest {
 
         PathwayEvent eventModel = mapper.toEventModel(kbEvent);
         assertNotNull(eventModel);
+        assertEquals(kbEvent.id.toHexString(), eventModel.getId());
         assertEquals("IFNA1", eventModel.getFirst());
         assertEquals("bind", eventModel.getRelation());
         assertEquals("IRF7", eventModel.getSecond());

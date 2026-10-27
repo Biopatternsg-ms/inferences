@@ -31,16 +31,18 @@ import lombok.ToString;
 @ToString
 @EqualsAndHashCode
 public class PathwayEvent {
+    private String id;
     private String first;
     private String relation;
     private String second;
     private Integer position;
 
     public PathwayEvent(String first, String relation, String second) {
-        this.first = first;
-        this.relation = relation;
-        this.second = second;
-        this.position = null;
+        this(null, first, relation, second, null);
+    }
+
+    public PathwayEvent(String first, String relation, String second, Integer position) {
+        this(null, first, relation, second, position);
     }
 
     public String getSubject() {

@@ -117,8 +117,8 @@ class InferPathwaysUseCaseDynamicTest {
         );
 
         List<PathwayEvent> events = List.of(
-                new PathwayEvent("IFNA1", "association", "IRF7"),
-                new PathwayEvent("IRF7", "bind", "IRF3")
+                PathwayEvent.builder().id("ev-id-1").first("IFNA1").relation("association").second("IRF7").build(),
+                PathwayEvent.builder().id("ev-id-2").first("IRF7").relation("bind").second("IRF3").build()
         );
 
         DynamicInferenceInput input = DynamicInferenceInput.builder()
@@ -142,7 +142,9 @@ class InferPathwaysUseCaseDynamicTest {
         BiologicalPathway pathway = result.getPathways().get(0);
         assertNotNull(pathway);
         assertEquals(2, pathway.getEvents().size());
+        assertEquals("ev-id-1", pathway.getEvents().get(0).getId());
         assertEquals(1, pathway.getEvents().get(0).getPosition());
+        assertEquals("ev-id-2", pathway.getEvents().get(1).getId());
         assertEquals(2, pathway.getEvents().get(1).getPosition());
         assertEquals("IFNA1", pathway.getStartObject());
         assertEquals("IRF3", pathway.getEndObject());
@@ -242,8 +244,8 @@ class InferPathwaysUseCaseDynamicTest {
     void shouldRunPipelineInferenceAndPersistToRepositories() {
         String pipeId = "prod-pipe-01";
         List<PathwayEvent> events = List.of(
-                new PathwayEvent("IFNA1", "association", "IRF7"),
-                new PathwayEvent("IRF7", "bind", "IRF3")
+                PathwayEvent.builder().id("ev-id-1").first("IFNA1").relation("association").second("IRF7").build(),
+                PathwayEvent.builder().id("ev-id-2").first("IRF7").relation("bind").second("IRF3").build()
         );
 
         Map<String, List<String>> rolesMap = Map.of(
@@ -336,8 +338,8 @@ class InferPathwaysUseCaseDynamicTest {
                 .build();
 
         List<PathwayEvent> events = List.of(
-                new PathwayEvent("IFNA1", "association", "IRF7"),
-                new PathwayEvent("IRF7", "bind", "IRF3")
+                PathwayEvent.builder().id("ev-id-1").first("IFNA1").relation("association").second("IRF7").build(),
+                PathwayEvent.builder().id("ev-id-2").first("IRF7").relation("bind").second("IRF3").build()
         );
 
         when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.of(inference));

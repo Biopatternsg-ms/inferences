@@ -47,7 +47,7 @@ class PubmedIntegrationRepositoryAdapterTest {
     @Test
     @DisplayName("getEventsByTerm maps DTOs to domain KbEvent correctly")
     void testGetEventsByTerm_Success() {
-        KbEventDTO dto = new KbEventDTO("pipe-1", "BRCA1", "BINDS_TO", "RAD51", List.of("12345"));
+        KbEventDTO dto = new KbEventDTO("ev-id-123", "pipe-1", "BRCA1", "BINDS_TO", "RAD51", List.of("12345"));
         when(pubmedIntegrationHttpClient.getKbEventsByTerm("pipe-1", "BRCA1")).thenReturn(List.of(dto));
 
         List<KbEvent> result = adapter.getEventsByTerm("pipe-1", "BRCA1");
@@ -55,6 +55,7 @@ class PubmedIntegrationRepositoryAdapterTest {
         assertNotNull(result);
         assertEquals(1, result.size());
         KbEvent event = result.get(0);
+        assertEquals("ev-id-123", event.id());
         assertEquals("pipe-1", event.pipelineId());
         assertEquals("BRCA1", event.first());
         assertEquals("BINDS_TO", event.relation());
