@@ -57,6 +57,7 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
             return dtos.stream()
                     .filter(java.util.Objects::nonNull)
                     .map(dto -> new KbEvent(
+                            dto.id(),
                             dto.pipelineId(),
                             dto.first(),
                             dto.relation(),
@@ -95,6 +96,7 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
             return dtos.stream()
                     .filter(java.util.Objects::nonNull)
                     .map(dto -> new KbEvent(
+                            dto.id(),
                             dto.pipelineId(),
                             dto.first(),
                             dto.relation(),
@@ -134,6 +136,7 @@ public class PubmedIntegrationRepositoryAdapter implements PubmedIntegrationRepo
             return dtos.stream()
                     .filter(java.util.Objects::nonNull)
                     .map(dto -> new KbEvent(
+                            dto.id(),
                             dto.pipelineId(),
                             dto.first(),
                             dto.relation(),

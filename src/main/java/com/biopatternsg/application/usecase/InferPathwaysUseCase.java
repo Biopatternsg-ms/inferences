@@ -64,7 +64,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class InferPathwaysUseCase implements InferPathways {
 
     private static final int DEFAULT_MAX_DEPTH = 5;
-    private static final int DEFAULT_MAX_PATHWAYS_LIMIT = 100_000;
+    private static final int DEFAULT_MAX_PATHWAYS_LIMIT = 500_000;
     private static final int DEFAULT_EXECUTION_TIMEOUT_SECONDS = 300;
     private static final long PROGRESS_LOG_INTERVAL_MS = 2_000L;
     private static final ObjectMapper JSON_MAPPER = JsonMapper.builder()
@@ -91,7 +91,7 @@ public class InferPathwaysUseCase implements InferPathways {
             @ConfigProperty(name = "inferences.output.dir", defaultValue = "output") String outputDirName,
             @ConfigProperty(name = "inferences.prolog.concurrency", defaultValue = "4") int maxConcurrency,
             @ConfigProperty(name = "inferences.prolog.timeout.seconds", defaultValue = "60") int timeoutSeconds,
-            @ConfigProperty(name = "inferences.pathways.max-limit", defaultValue = "100000") int maxPathwaysLimit,
+            @ConfigProperty(name = "inferences.pathways.max-limit", defaultValue = "500000") int maxPathwaysLimit,
             @ConfigProperty(name = "inferences.execution.timeout.seconds", defaultValue = "300") int executionTimeoutSeconds) {
         this.prologInferencePort = prologInferencePort;
         this.pathwayRepository = pathwayRepository;
@@ -885,6 +885,17 @@ run :-
 
             // 3. Procesar eventos (resumir o usar directos) y generar kBase_optimized.pl
             List<PathwayEvent> sourceEvents = input.getEvents() != null ? input.getEvents() : List.of();
+            Map<String, String> eventIdMap = new LinkedHashMap<>();
+            for (PathwayEvent ev : sourceEvents) {
+                if (ev != null && ev.getId() != null) {
+                    String f = normalizeObjectName(ev.getFirst());
+                    String r = ev.getRelation() != null ? ev.getRelation().toLowerCase().trim().replace("-", "_").replace(" ", "_") : "";
+                    String s = normalizeObjectName(ev.getSecond());
+                    eventIdMap.putIfAbsent(f + "|" + r + "|" + s, ev.getId());
+                    eventIdMap.putIfAbsent(f + "|" + normalizeRelation(r) + "|" + s, ev.getId());
+                }
+            }
+
             List<PathwayEvent> effectiveEvents = input.isSummarizeKb()
                     ? summarizeKnowledgeBase(sourceEvents)
                     : sourceEvents;
@@ -1227,7 +1238,18 @@ run :-
                     String first = unquoteAtom(eventSource(seg));
                     String rel = unquoteAtom(eventRelation(seg));
                     String second = unquoteAtom(eventDest(seg));
-                    evList.add(new PathwayEvent(first, rel, second, pos + 1));
+                    String eventKey = first + "|" + rel + "|" + second;
+                    String eventId = eventIdMap.get(eventKey);
+                    if (eventId == null) {
+                        eventId = eventIdMap.get(first + "|" + normalizeRelation(rel) + "|" + second);
+                    }
+                    evList.add(PathwayEvent.builder()
+                            .id(eventId)
+                            .first(first)
+                            .relation(rel)
+                            .second(second)
+                            .position(pos + 1)
+                            .build());
                     pathwayObjNames.add(first);
                     pathwayObjNames.add(second);
 
@@ -1456,7 +1478,12 @@ run :-
         for (PathwayEvent ev : events) {
             String normalizedRel = normalizeRelation(ev.getRelation());
             String key = ev.getFirst() + "|" + normalizedRel + "|" + ev.getSecond();
-            uniqueEvents.putIfAbsent(key, new PathwayEvent(ev.getFirst(), normalizedRel, ev.getSecond()));
+            uniqueEvents.putIfAbsent(key, PathwayEvent.builder()
+                    .id(ev.getId())
+                    .first(ev.getFirst())
+                    .relation(normalizedRel)
+                    .second(ev.getSecond())
+                    .build());
         }
         return new ArrayList<>(uniqueEvents.values());
     }

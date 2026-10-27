@@ -18,10 +18,14 @@ package com.biopatternsg.infrastructure.dtos;
 import java.util.List;
 
 public record KbEventDTO(
+        String id,
         String pipelineId,
         String first,
         String relation,
         String second,
         List<String> pubmedIds
 ) {
+    public KbEventDTO(String pipelineId, String first, String relation, String second, List<String> pubmedIds) {
+        this(null, pipelineId, first, relation, second, pubmedIds);
+    }
 }

@@ -18,12 +18,17 @@ package com.biopatternsg.domain.model;
 import java.util.List;
 
 public record KbEvent(
+        String id,
         String pipelineId,
         String first,
         String relation,
         String second,
         List<String> pubmedIds
 ) {
+    public KbEvent(String pipelineId, String first, String relation, String second, List<String> pubmedIds) {
+        this(null, pipelineId, first, relation, second, pubmedIds);
+    }
+
     public KbEvent {
         pubmedIds = (pubmedIds != null) ? List.copyOf(pubmedIds) : List.of();
     }

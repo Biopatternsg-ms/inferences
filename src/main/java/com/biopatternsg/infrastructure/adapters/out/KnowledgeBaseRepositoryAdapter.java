@@ -52,6 +52,7 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
                     log.info("Retrieved {} kb_events from pubmed-integration for pipelineId: {}", events.size(), pipelineId);
                     return events.stream()
                             .map(e -> PathwayEvent.builder()
+                                    .id(e.id())
                                     .first(e.first())
                                     .relation(e.relation())
                                     .second(e.second())
@@ -92,6 +93,7 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
                             events.size(), pipelineId, restrictionLevel);
                     return events.stream()
                             .map(e -> PathwayEvent.builder()
+                                    .id(e.id())
                                     .first(e.first())
                                     .relation(e.relation())
                                     .second(e.second())

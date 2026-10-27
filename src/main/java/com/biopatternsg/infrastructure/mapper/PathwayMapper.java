@@ -99,6 +99,7 @@ public class PathwayMapper {
             return null;
         }
         return PathwayEventDocument.builder()
+                .id(event.getId())
                 .first(event.getFirst())
                 .relation(event.getRelation())
                 .second(event.getSecond())
@@ -111,6 +112,7 @@ public class PathwayMapper {
             return null;
         }
         return PathwayEvent.builder()
+                .id(doc.getId())
                 .first(doc.getFirst())
                 .relation(doc.getRelation())
                 .second(doc.getSecond())
@@ -215,6 +217,7 @@ public class PathwayMapper {
             return null;
         }
         return PathwayEvent.builder()
+                .id(entity.id != null ? entity.id.toHexString() : null)
                 .first(entity.getFirst())
                 .relation(entity.getRelation())
                 .second(entity.getSecond())
