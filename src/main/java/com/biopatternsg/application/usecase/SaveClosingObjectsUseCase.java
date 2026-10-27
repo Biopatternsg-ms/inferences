@@ -55,8 +55,8 @@ public class SaveClosingObjectsUseCase implements SaveClosingObjects {
             Integer maxDepth,
             String userId
     ) {
-        log.info("Executing SaveClosingObjects for pipelineId: {}, closingObjects count: {}, userId: {}",
-                pipelineId, closingObjects != null ? closingObjects.size() : 0, userId);
+        log.info("Executing SaveClosingObjects for pipelineId: {}, closingObjects count: {}, summarizeKb: {}, maxDepth: {}, userId: {}",
+                pipelineId, closingObjects != null ? closingObjects.size() : 0, summarizeKb, maxDepth, userId);
 
         if (pipelineId == null || pipelineId.isBlank()) {
             throw new IllegalArgumentException("PipelineId must not be null or blank");
@@ -70,11 +70,35 @@ public class SaveClosingObjectsUseCase implements SaveClosingObjects {
                         .toList()
                 : List.of();
 
-        // 1. Guardar closingObjects en el documento Inference
+        // 1. Guardar closingObjects y resolver summarizeKb / maxDepth desde el documento Inference
+        boolean effectiveSummarize = Boolean.TRUE.equals(summarizeKb);
+        int effectiveDepth = (maxDepth != null && maxDepth > 0) ? maxDepth : 5;
+
         Optional<Inference> inferenceOpt = inferenceRepository.findByPipelineId(pipelineId);
         if (inferenceOpt.isPresent()) {
             Inference inference = inferenceOpt.get();
             inference.setClosingObjects(new ArrayList<>(sanitizedClosing));
+
+            if (summarizeKb != null) {
+                effectiveSummarize = summarizeKb;
+                inference.setSummarizeKb(summarizeKb);
+            } else if (inference.getSummarizeKb() != null) {
+                effectiveSummarize = inference.getSummarizeKb();
+            } else {
+                effectiveSummarize = true;
+                inference.setSummarizeKb(true);
+            }
+
+            if (maxDepth != null && maxDepth > 0) {
+                effectiveDepth = maxDepth;
+                inference.setMaxDepth(maxDepth);
+            } else if (inference.getMaxDepth() != null && inference.getMaxDepth() > 0) {
+                effectiveDepth = inference.getMaxDepth();
+            } else {
+                effectiveDepth = 5;
+                inference.setMaxDepth(5);
+            }
+
             inferenceRepository.save(inference);
         } else {
             log.warn("No inference document found for pipelineId: {} when saving closing objects", pipelineId);
@@ -107,18 +131,20 @@ public class SaveClosingObjectsUseCase implements SaveClosingObjects {
                     STEP_INFER_PATHWAYS,
                     STATUS_IN_PROGRESS,
                     userId,
-                    Map.of("statusMessage", "Inference execution triggered in SWI-Prolog")
+                    Map.of(
+                            "statusMessage", "Inference execution triggered in SWI-Prolog",
+                            "summarizeKb", String.valueOf(effectiveSummarize),
+                            "maxDepth", String.valueOf(effectiveDepth)
+                    )
             );
         } catch (Exception e) {
             log.warn("Failed setting step {} to IN_PROGRESS in config-and-control for pipeline {}: {}",
                     STEP_INFER_PATHWAYS, pipelineId, e.getMessage());
         }
 
-        // 4. Ejecutar la inferencia de vías en RAM
+        // 4. Ejecutar la inferencia de vías en RAM (capturando Throwable para incluir OutOfMemoryError/Error)
         DynamicExecutionResult result;
         try {
-            boolean effectiveSummarize = Boolean.TRUE.equals(summarizeKb);
-            int effectiveDepth = (maxDepth != null && maxDepth > 0) ? maxDepth : 10;
             result = inferPathways.runPipelineInference(
                     pipelineId,
                     userId,
@@ -127,20 +153,32 @@ public class SaveClosingObjectsUseCase implements SaveClosingObjects {
                     effectiveSummarize,
                     effectiveDepth
             );
-        } catch (Exception e) {
-            log.error("Error executing pathway inference for pipelineId {}: {}", pipelineId, e.getMessage(), e);
+        } catch (Throwable t) {
+            String errorType = t.getClass().getSimpleName();
+            String errorMsg = t.getMessage() != null ? t.getMessage() : errorType;
+            log.error("Fatal error ({}) executing pathway inference for pipelineId {}: {}",
+                    errorType, pipelineId, errorMsg, t);
             try {
                 configAndControlRepository.updateStep(
                         pipelineId,
                         STEP_INFER_PATHWAYS,
                         STATUS_FAILED,
                         userId,
-                        Map.of("statusMessage", "Inference failed: " + e.getMessage())
+                        Map.of(
+                                "statusMessage", "Inference failed (" + errorType + "): " + errorMsg,
+                                "error", errorMsg
+                        )
                 );
-            } catch (Exception ex) {
+            } catch (Throwable ex) {
                 log.warn("Failed marking step {} as FAILED in config-and-control: {}", STEP_INFER_PATHWAYS, ex.getMessage());
             }
-            throw e;
+            if (t instanceof RuntimeException re) {
+                throw re;
+            }
+            if (t instanceof Error err) {
+                throw err;
+            }
+            throw new RuntimeException("Pathway inference failed: " + errorMsg, t);
         }
 
         // 5. Notificar a config-and-control: INFER_PATHWAYS completado con métricas
@@ -153,6 +191,8 @@ public class SaveClosingObjectsUseCase implements SaveClosingObjects {
         inferenceMetrics.put("graphNodesCount", String.valueOf(nodesCount));
         inferenceMetrics.put("graphEdgesCount", String.valueOf(edgesCount));
         inferenceMetrics.put("executionTimeMs", String.valueOf(result.getExecutionTimeMs()));
+        inferenceMetrics.put("summarizeKb", String.valueOf(effectiveSummarize));
+        inferenceMetrics.put("maxDepth", String.valueOf(effectiveDepth));
         inferenceMetrics.put("statusMessage", "Pathway inference completed successfully");
 
         try {

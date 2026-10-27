@@ -35,6 +35,8 @@ public class Inference {
     private String id;
     private String pipelineId;
     private String restrictionLevel;
+    private Boolean summarizeKb;
+    private Integer maxDepth;
     private Map<String, List<String>> roles;
     private List<String> closingObjects;
 

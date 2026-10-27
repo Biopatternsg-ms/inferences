@@ -100,10 +100,14 @@ public class InferenceController {
         CompletableFuture.runAsync(() -> {
             try {
                 findRoles.execute(requestDTO.getPipelineId(), requestDTO.getAlignedObjects(), userId);
-            } catch (Exception e) {
-                log.error("Error executing findRoles asynchronously for pipeline: {}", requestDTO.getPipelineId(), e);
+            } catch (Throwable t) {
+                log.error("Error executing findRoles asynchronously for pipeline: {}", requestDTO.getPipelineId(), t);
             }
-        }, executor);
+        }, executor).whenComplete((res, ex) -> {
+            if (ex != null) {
+                log.error("Unhandled async completion error in findRoles for pipeline: {}", requestDTO.getPipelineId(), ex);
+            }
+        });
 
         return Response.accepted(Map.of(
                 "message", "Find roles process initiated",
@@ -186,13 +190,13 @@ public class InferenceController {
                             .message(e.getMessage())
                             .build())
                     .build();
-        } catch (Exception e) {
-            log.error("Error executing production pathway inference for pipelineId: {}", request.getPipelineId(), e);
+        } catch (Throwable t) {
+            log.error("Error executing production pathway inference for pipelineId: {}", request.getPipelineId(), t);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(PathwayInferenceResponseDTO.builder()
                             .status("ERROR")
                             .pipelineId(request.getPipelineId())
-                            .message("Inference failed: " + e.getMessage())
+                            .message("Inference failed: " + t.getMessage())
                             .build())
                     .build();
         }
@@ -379,10 +383,14 @@ public class InferenceController {
         CompletableFuture.runAsync(() -> {
             try {
                 updateBiologicalObjects.execute(pipelineId, requestDTO.roles(), userId);
-            } catch (Exception e) {
-                log.error("Error executing updateBiologicalObjects asynchronously for pipeline: {}", pipelineId, e);
+            } catch (Throwable t) {
+                log.error("Error executing updateBiologicalObjects asynchronously for pipeline: {}", pipelineId, t);
             }
-        }, executor);
+        }, executor).whenComplete((res, ex) -> {
+            if (ex != null) {
+                log.error("Unhandled async completion error in updateBiologicalObjects for pipeline: {}", pipelineId, ex);
+            }
+        });
 
         return Response.accepted(Map.of(
                 "message", "Update biological objects roles initiated",
@@ -453,10 +461,14 @@ public class InferenceController {
         CompletableFuture.runAsync(() -> {
             try {
                 saveClosingObjects.execute(pipelineId, closingObjects, summarize, maxDepth, userId);
-            } catch (Exception e) {
-                log.error("Error executing saveClosingObjects asynchronously for pipeline: {}", pipelineId, e);
+            } catch (Throwable t) {
+                log.error("Error executing saveClosingObjects asynchronously for pipeline: {}", pipelineId, t);
             }
-        }, executor);
+        }, executor).whenComplete((res, ex) -> {
+            if (ex != null) {
+                log.error("Unhandled async completion error in saveClosingObjects for pipeline: {}", pipelineId, ex);
+            }
+        });
 
         return Response.accepted(Map.of(
                 "message", "Pathway inference process initiated",

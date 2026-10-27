@@ -32,6 +32,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,16 +65,23 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
         if (pathways == null || pathways.isEmpty()) {
             return;
         }
-        List<PathwayCollection> entities = pathways.stream()
-                .map(pathwayMapper::toEntity)
-                .toList();
+        int total = pathways.size();
+        int totalBatches = (total + BATCH_SIZE - 1) / BATCH_SIZE;
+        int batchIndex = 0;
 
-        for (int i = 0; i < entities.size(); i += BATCH_SIZE) {
-            int end = Math.min(i + BATCH_SIZE, entities.size());
-            List<PathwayCollection> batch = entities.subList(i, end);
-            persist(batch);
+        for (int i = 0; i < total; i += BATCH_SIZE) {
+            batchIndex++;
+            int end = Math.min(i + BATCH_SIZE, total);
+            List<PathwayCollection> batchEntities = new ArrayList<>(end - i);
+            for (int j = i; j < end; j++) {
+                batchEntities.add(pathwayMapper.toEntity(pathways.get(j)));
+            }
+            persist(batchEntities);
+            log.info("[MONGO BATCH] Persisted batch {}/{} ({}/{} pathways)",
+                    batchIndex, totalBatches, end, total);
         }
-        log.info("Persisted {} pathways into MongoDB in batches of {}", entities.size(), BATCH_SIZE);
+        log.info("Persisted {} total pathways into MongoDB in {} batches of up to {}",
+                total, totalBatches, BATCH_SIZE);
     }
 
     @Override

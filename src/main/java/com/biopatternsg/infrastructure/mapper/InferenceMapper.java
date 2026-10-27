@@ -32,6 +32,8 @@ public class InferenceMapper {
         return Inference.builder()
                 .pipelineId(dto.getPipelineId())
                 .restrictionLevel(dto.getRestrictionLevel())
+                .summarizeKb(dto.getSummarizeKb() != null ? dto.getSummarizeKb() : Boolean.TRUE)
+                .maxDepth(dto.getMaxDepth() != null && dto.getMaxDepth() > 0 ? dto.getMaxDepth() : 5)
                 .build();
     }
 
@@ -43,6 +45,8 @@ public class InferenceMapper {
                 .id(model.getId())
                 .pipelineId(model.getPipelineId())
                 .restrictionLevel(model.getRestrictionLevel())
+                .summarizeKb(model.getSummarizeKb() != null ? model.getSummarizeKb() : Boolean.TRUE)
+                .maxDepth(model.getMaxDepth() != null && model.getMaxDepth() > 0 ? model.getMaxDepth() : 5)
                 .roles(model.getRoles())
                 .closingObjects(model.getClosingObjects())
                 .build();
@@ -58,6 +62,8 @@ public class InferenceMapper {
         }
         entity.setPipelineId(model.getPipelineId());
         entity.setRestrictionLevel(model.getRestrictionLevel());
+        entity.setSummarizeKb(model.getSummarizeKb() != null ? model.getSummarizeKb() : Boolean.TRUE);
+        entity.setMaxDepth(model.getMaxDepth() != null && model.getMaxDepth() > 0 ? model.getMaxDepth() : 5);
         entity.setRoles(model.getRoles());
         entity.setClosingObjects(model.getClosingObjects());
         return entity;
@@ -71,6 +77,8 @@ public class InferenceMapper {
                 .id(entity.id != null ? entity.id.toHexString() : null)
                 .pipelineId(entity.getPipelineId())
                 .restrictionLevel(entity.getRestrictionLevel())
+                .summarizeKb(entity.getSummarizeKb() != null ? entity.getSummarizeKb() : Boolean.TRUE)
+                .maxDepth(entity.getMaxDepth() != null && entity.getMaxDepth() > 0 ? entity.getMaxDepth() : 5)
                 .roles(entity.getRoles())
                 .closingObjects(entity.getClosingObjects())
                 .build();

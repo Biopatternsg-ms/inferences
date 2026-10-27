@@ -53,5 +53,5 @@ public class DynamicInferenceInput {
     private boolean summarizeKb = false;
 
     @Builder.Default
-    private int maxDepth = 10;
+    private int maxDepth = 5;
 }

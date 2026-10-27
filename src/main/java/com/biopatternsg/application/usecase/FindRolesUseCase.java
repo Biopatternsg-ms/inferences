@@ -94,15 +94,19 @@ public class FindRolesUseCase implements FindRoles {
                 processOtherRestrictionLevels(inference, userId);
             }
 
-        } catch (Exception e) {
-            log.error("Error executing FindRolesUseCase for pipeline {}: {}", pipelineId, e.getMessage(), e);
-            configAndControlRepository.updateStep(
-                    pipelineId,
-                    STEP_FIND_ROLES,
-                    STATUS_FAILED,
-                    userId,
-                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unexpected error during role discovery")
-            );
+        } catch (Throwable t) {
+            log.error("Error executing FindRolesUseCase for pipeline {}: {}", pipelineId, t.getMessage(), t);
+            try {
+                configAndControlRepository.updateStep(
+                        pipelineId,
+                        STEP_FIND_ROLES,
+                        STATUS_FAILED,
+                        userId,
+                        Map.of("error", t.getMessage() != null ? t.getMessage() : "Unexpected error during role discovery")
+                );
+            } catch (Throwable ex) {
+                log.warn("Failed updating step {} to FAILED in config-and-control: {}", STEP_FIND_ROLES, ex.getMessage());
+            }
         }
     }
 

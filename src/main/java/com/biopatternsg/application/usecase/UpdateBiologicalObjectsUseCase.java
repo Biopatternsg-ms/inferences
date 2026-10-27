@@ -83,15 +83,19 @@ public class UpdateBiologicalObjectsUseCase implements UpdateBiologicalObjects {
                     metrics
             );
             log.info("Step UPDATE_BIOLOGICAL_OBJECTS completed successfully for pipelineId: {}", pipelineId);
-        } catch (Exception e) {
-            log.error("Error executing UpdateBiologicalObjects for pipeline {}: {}", pipelineId, e.getMessage(), e);
-            configAndControlRepository.updateStep(
-                    pipelineId,
-                    STEP_UPDATE_BIOLOGICAL_OBJECTS,
-                    "FAILED",
-                    userId,
-                    Map.of("error", e.getMessage() != null ? e.getMessage() : "Unknown error updating biological objects")
-            );
+        } catch (Throwable t) {
+            log.error("Error executing UpdateBiologicalObjects for pipeline {}: {}", pipelineId, t.getMessage(), t);
+            try {
+                configAndControlRepository.updateStep(
+                        pipelineId,
+                        STEP_UPDATE_BIOLOGICAL_OBJECTS,
+                        "FAILED",
+                        userId,
+                        Map.of("error", t.getMessage() != null ? t.getMessage() : "Unknown error updating biological objects")
+                );
+            } catch (Throwable ex) {
+                log.warn("Failed updating step {} to FAILED in config-and-control: {}", STEP_UPDATE_BIOLOGICAL_OBJECTS, ex.getMessage());
+            }
         }
     }
 }

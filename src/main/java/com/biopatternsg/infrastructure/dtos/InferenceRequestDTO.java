@@ -33,4 +33,8 @@ public class InferenceRequestDTO {
 
     @NotBlank(message = "restrictionLevel is required")
     private String restrictionLevel;
+
+    private Boolean summarizeKb;
+
+    private Integer maxDepth;
 }
