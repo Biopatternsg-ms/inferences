@@ -1177,7 +1177,7 @@ run :-
                 long now = System.currentTimeMillis();
                 if (now - lastLogTime >= PROGRESS_LOG_INTERVAL_MS || idx == objEnlace.size() - 1) {
                     lastLogTime = now;
-                    int pct = objEnlace.isEmpty() ? 100 : (int) (((idx + 1) * 100L) / objEnlace.size());
+                    int pct = objEnlace.isEmpty() ? 100 : (int) ((idx + 1) * 100L / objEnlace.size());
                     log.info("[STEP 6/7 - DFS PROGRESS] [pipelineId={}] Link object {}/{} ({}%) | uniquePathways={} | dfsNodesVisited={} | elapsed={} ms",
                             pipelineId, idx + 1, objEnlace.size(), pct, uniquePathways.size(),
                             dfsVisitedNodes.get(), now - startTime);
@@ -1305,9 +1305,10 @@ run :-
                 .orElseThrow(() -> new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId));
 
         boolean effectiveSummarizeKb = summarizeKb || Boolean.TRUE.equals(inference.getSummarizeKb());
-        int effectiveMaxDepth = (maxDepth != null && maxDepth > 0)
-                ? maxDepth
-                : (inference.getMaxDepth() != null && inference.getMaxDepth() > 0 ? inference.getMaxDepth() : DEFAULT_MAX_DEPTH);
+        int configuredMaxDepth = inference.getMaxDepth() != null && inference.getMaxDepth() > 0
+                ? inference.getMaxDepth()
+                : DEFAULT_MAX_DEPTH;
+        int effectiveMaxDepth = maxDepth != null && maxDepth > 0 ? maxDepth : configuredMaxDepth;
 
         List<KbObject> objects = resolveBiologicalObjects(inference, pipelineId);
         if (objects == null || objects.isEmpty()) {
@@ -1315,7 +1316,7 @@ run :-
         }
 
         String restrictionLevel = inference.getRestrictionLevel() != null ? inference.getRestrictionLevel() : "UNRESTRICTED";
-        List<String> targetObjects = (restrictedObjects != null && !restrictedObjects.isEmpty())
+        List<String> targetObjects = restrictedObjects != null && !restrictedObjects.isEmpty()
                 ? restrictedObjects
                 : objects.stream().map(KbObject::getName).toList();
 
@@ -1325,9 +1326,12 @@ run :-
             throw new IllegalArgumentException("No biological events found in knowledge base for pipelineId: " + pipelineId);
         }
 
-        List<String> effectiveClosing = (closingObjects != null && !closingObjects.isEmpty())
+        List<String> configuredClosing = inference.getClosingObjects() != null
+                ? inference.getClosingObjects()
+                : List.of();
+        List<String> effectiveClosing = closingObjects != null && !closingObjects.isEmpty()
                 ? closingObjects
-                : (inference.getClosingObjects() != null ? inference.getClosingObjects() : List.of());
+                : configuredClosing;
 
         log.info("[STEP 1/7 - KB LOAD] [pipelineId={}] Starting production inference: user={}, restrictionLevel={}, objects={}, events={}, closingObjects={}, summarizeKb={}, maxDepth={}",
                 pipelineId, user, restrictionLevel, objects.size(), events.size(),

@@ -38,8 +38,8 @@ public class ManageInferenceUseCase implements InferenceUseCase {
 
     @Override
     public Inference createInference(Inference inference, String userId) {
-        boolean summarizeKb = inference.getSummarizeKb() != null ? inference.getSummarizeKb() : true;
-        int maxDepth = (inference.getMaxDepth() != null && inference.getMaxDepth() > 0) ? inference.getMaxDepth() : 5;
+        boolean summarizeKb = inference.getSummarizeKb() == null || inference.getSummarizeKb();
+        int maxDepth = inference.getMaxDepth() != null && inference.getMaxDepth() > 0 ? inference.getMaxDepth() : 5;
         inference.setSummarizeKb(summarizeKb);
         inference.setMaxDepth(maxDepth);
 
