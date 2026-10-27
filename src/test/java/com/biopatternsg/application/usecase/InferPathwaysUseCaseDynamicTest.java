@@ -387,4 +387,37 @@ class InferPathwaysUseCaseDynamicTest {
         assertNotNull(result);
         verify(knowledgeBaseRepository).findEventsByPipelineIdAndRestriction(eq(pipeId), eq("RESTRICTED"), any());
     }
+
+    @Test
+    @DisplayName("Should handle object names with escaped single quotes, apostrophes, double quotes, and commas without JsonParseException")
+    void shouldHandleSpecialCharactersInObjectNames() {
+        List<KbObject> objects = List.of(
+                KbObject.builder().name("5\\'UTR-ligand").roles(List.of("ligand")).build(),
+                KbObject.builder().name("1,25-dihydroxyvitamin D").roles(List.of("protein")).build(),
+                KbObject.builder().name("Kaposi's \"receptor\"").roles(List.of("transcription_factor")).build()
+        );
+
+        List<PathwayEvent> events = List.of(
+                new PathwayEvent("5\\'UTR-ligand", "association", "1,25-dihydroxyvitamin D"),
+                new PathwayEvent("1,25-dihydroxyvitamin D", "bind", "Kaposi's \"receptor\"")
+        );
+
+        DynamicInferenceInput input = DynamicInferenceInput.builder()
+                .pipelineId("pipe-special-chars")
+                .user("tester")
+                .objects(objects)
+                .events(events)
+                .summarizeKb(true)
+                .maxDepth(5)
+                .build();
+
+        DynamicExecutionResult result = useCase.runDynamicInference(input);
+
+        assertNotNull(result);
+        assertEquals(1, result.getGeneratedPathwaysCount());
+        BiologicalPathway pathway = result.getPathways().get(0);
+        assertEquals("5'UTR-ligand", pathway.getStartObject());
+        assertEquals("Kaposi's \"receptor\"", pathway.getEndObject());
+        assertEquals(3, pathway.getObjects().size());
+    }
 }

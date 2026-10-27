@@ -29,7 +29,9 @@ import com.biopatternsg.domain.port.out.PrologInferencePort;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.PathwayRepository;
+import com.fasterxml.jackson.core.json.JsonReadFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +67,10 @@ public class InferPathwaysUseCase implements InferPathways {
     private static final int DEFAULT_MAX_PATHWAYS_LIMIT = 100_000;
     private static final int DEFAULT_EXECUTION_TIMEOUT_SECONDS = 300;
     private static final long PROGRESS_LOG_INTERVAL_MS = 2_000L;
+    private static final ObjectMapper JSON_MAPPER = JsonMapper.builder()
+            .enable(JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER)
+            .enable(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS)
+            .build();
 
     private final PrologInferencePort prologInferencePort;
     private final PathwayRepository pathwayRepository;
@@ -335,6 +341,7 @@ public class InferPathwaysUseCase implements InferPathways {
 
         String runnerTemplate = """
 :- style_check(-discontiguous).
+:- use_module(library(http/json)).
 :- consult('{obj_file}').
 :- consult('{kb_file}').
 
@@ -380,19 +387,9 @@ final_especial_rule(A, E, B, L) :-
     event(A, E, B),
     member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]).
 
-write_json_events([], _).
-write_json_events([[A, E, B]], S) :-
-    !,
-    format(S, '["~w", "~w", "~w"]', [A, E, B]).
-write_json_events([[A, E, B]|Rest], S) :-
-    format(S, '["~w", "~w", "~w"],', [A, E, B]),
-    write_json_events(Rest, S).
-
 dump_list(File, List) :-
-    open(File, write, S),
-    write(S, '['),
-    write_json_events(List, S),
-    write(S, ']'),
+    open(File, write, S, [encoding(utf8)]),
+    json_write(S, List, [width(0)]),
     close(S).
 
 run :-
@@ -434,13 +431,45 @@ run :-
     private List<String> loadEventsJson(Path folder, String name) throws IOException {
         Path p = folder.resolve(name);
         if (!Files.exists(p)) return Collections.emptyList();
-        ObjectMapper mapper = new ObjectMapper();
-        String[][] list = mapper.readValue(Files.readString(p), String[][].class);
+        String[][] list = JSON_MAPPER.readValue(Files.readString(p), String[][].class);
         List<String> result = new ArrayList<>(list.length);
         for (String[] trip : list) {
             result.add(String.format("'%s',%s,'%s'", trip[0], trip[1], trip[2]));
         }
         return result;
+    }
+
+    private static String eventSource(String ev) {
+        int idx = ev.indexOf("',");
+        return idx >= 0 ? ev.substring(0, idx + 1) : ev.split(",")[0];
+    }
+
+    private static String eventRelation(String ev) {
+        int firstIdx = ev.indexOf("',");
+        int lastIdx = ev.lastIndexOf(",'");
+        if (firstIdx >= 0 && lastIdx > firstIdx) {
+            return ev.substring(firstIdx + 2, lastIdx);
+        }
+        return ev.split(",")[1];
+    }
+
+    private static String eventDest(String ev) {
+        int idx = ev.lastIndexOf(",'");
+        return idx >= 0 ? ev.substring(idx + 1) : ev.split(",")[2];
+    }
+
+    private static String unquoteAtom(String quoted) {
+        if (quoted == null) return "";
+        String s = quoted.trim();
+        if (s.length() >= 2 && s.startsWith("'") && s.endsWith("'")) {
+            s = s.substring(1, s.length() - 1);
+        }
+        return s.replace("\\'", "'").replace("\\\\", "\\");
+    }
+
+    private static String normalizeObjectName(String raw) {
+        if (raw == null) return "";
+        return raw.trim().replace("\\'", "'").replace(";", ",");
     }
 
     private String classifyEvent(String rel) {
@@ -460,12 +489,14 @@ run :-
         List<String> res = new ArrayList<>();
         String[] events = patron.split(";");
         for (String ev : events) {
-            String[] parts = ev.split(",");
-            if (!res.contains(parts[0])) {
-                res.add(parts[0]);
+            if (ev.isBlank()) continue;
+            String first = eventSource(ev);
+            String second = eventDest(ev);
+            if (!res.contains(first)) {
+                res.add(first);
             }
-            if (!res.contains(parts[2])) {
-                res.add(parts[2]);
+            if (!res.contains(second)) {
+                res.add(second);
             }
         }
         return res;
@@ -600,8 +631,7 @@ run :-
             if (limitReached.get()) {
                 break;
             }
-            int lastComma = even.lastIndexOf(',');
-            String dest = even.substring(lastComma + 1);
+            String dest = eventDest(even);
 
             if (visitedInPath.contains(dest)) {
                 continue;
@@ -671,10 +701,12 @@ run :-
             Set<String> uniquePathways,
             AtomicBoolean limitReached) {
 
-        int firstComma = patron.indexOf(',');
-        String primero = patron.substring(1, firstComma); // salta el ';' inicial
-        int lastComma = patron.lastIndexOf(',');
-        String ultimo = patron.substring(lastComma + 1);
+        int firstSemi = patron.indexOf(';', 1);
+        String firstEv = firstSemi > 0 ? patron.substring(1, firstSemi) : patron.substring(1);
+        String primero = eventSource(firstEv);
+        int lastSemi = patron.lastIndexOf(';');
+        String lastEv = lastSemi >= 0 ? patron.substring(lastSemi + 1) : patron;
+        String ultimo = eventDest(lastEv);
 
         List<String> candidateInicios = iniciosByDest.getOrDefault(primero, Collections.emptyList());
         if (candidateInicios.isEmpty()) {
@@ -689,8 +721,7 @@ run :-
         List<String> patrones = new ArrayList<>();
         Set<String> patronesSeen = new HashSet<>();
         for (String objin : candidateInicios) {
-            int cIdx = objin.indexOf(',');
-            String startSrc = objin.substring(0, cIdx);
+            String startSrc = eventSource(objin);
             if (!visitedInPath.contains(startSrc)) {
                 String pataux = objin + patron;
                 if (patronesSeen.add(pataux)) {
@@ -779,7 +810,8 @@ run :-
 
     private String escapePrologAtom(String value) {
         if (value == null) return "";
-        return value.replace("\\", "\\\\").replace("'", "\\'");
+        String normalized = normalizeObjectName(value);
+        return normalized.replace("\\", "\\\\").replace("'", "\\'");
     }
 
     @Override
@@ -823,7 +855,7 @@ run :-
             if (input.getObjects() != null) {
                 for (KbObject obj : input.getObjects()) {
                     if (obj.getName() == null || obj.getName().isBlank()) continue;
-                    String name = obj.getName().trim();
+                    String name = normalizeObjectName(obj.getName());
                     String escapedName = escapePrologAtom(name);
                     allObjectNames.add(name);
                     String primaryRole = resolvePrimaryRole(obj.getRoles());
@@ -863,9 +895,9 @@ run :-
             Set<String> seenEvents = new HashSet<>();
             for (PathwayEvent ev : effectiveEvents) {
                 if (ev.getFirst() == null || ev.getRelation() == null || ev.getSecond() == null) continue;
-                String f = ev.getFirst().trim();
+                String f = normalizeObjectName(ev.getFirst());
                 String r = ev.getRelation().toLowerCase().trim().replace("-", "_").replace(" ", "_");
-                String s = ev.getSecond().trim();
+                String s = normalizeObjectName(ev.getSecond());
                 allObjectNames.add(f);
                 allObjectNames.add(s);
                 primaryRoleMap.putIfAbsent(f, "protein");
@@ -886,7 +918,7 @@ run :-
             Set<String> uniqueRestricted = new LinkedHashSet<>();
             for (String rObj : restricted) {
                 if (rObj != null && !rObj.isBlank()) {
-                    String trimmed = rObj.trim();
+                    String trimmed = normalizeObjectName(rObj);
                     if (uniqueRestricted.add(trimmed)) {
                         objectsPl.append("restricted_obj('").append(escapePrologAtom(trimmed)).append("').\n");
                     }
@@ -899,7 +931,7 @@ run :-
             if (input.getClosingObjects() != null && !input.getClosingObjects().isEmpty()) {
                 for (String cObj : input.getClosingObjects()) {
                     if (cObj != null && !cObj.isBlank()) {
-                        String trimmed = cObj.trim();
+                        String trimmed = normalizeObjectName(cObj);
                         if (uniqueClosing.add(trimmed)) {
                             objectsPl.append("closing_obj('").append(escapePrologAtom(trimmed)).append("').\n");
                             hasClosingFilter = true;
@@ -928,6 +960,7 @@ run :-
 
             String runnerTemplate = """
 :- style_check(-discontiguous).
+:- use_module(library(http/json)).
 :- consult('{obj_file}').
 :- consult('{kb_file}').
 
@@ -973,19 +1006,9 @@ final_especial_rule(A, E, B) :-
     restricted_obj(B),
     member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]).
 
-write_json_events([], _).
-write_json_events([[A, E, B]], S) :-
-    !,
-    format(S, '["~w", "~w", "~w"]', [A, E, B]).
-write_json_events([[A, E, B]|Rest], S) :-
-    format(S, '["~w", "~w", "~w"],', [A, E, B]),
-    write_json_events(Rest, S).
-
 dump_list(File, List) :-
-    open(File, write, S),
-    write(S, '['),
-    write_json_events(List, S),
-    write(S, ']'),
+    open(File, write, S, [encoding(utf8)]),
+    json_write(S, List, [width(0)]),
     close(S).
 
 run :-
@@ -1039,8 +1062,7 @@ run :-
             List<String> objEnlace = new ArrayList<>();
             Set<String> objEnlaceSeen = new HashSet<>();
             for (String ev : listaInicio) {
-                String[] parts = ev.split(",");
-                String dest = parts[2];
+                String dest = eventDest(ev);
                 iniciosByDest.computeIfAbsent(dest, k -> new ArrayList<>()).add(ev);
                 if (objEnlaceSeen.add(dest)) {
                     objEnlace.add(dest);
@@ -1052,9 +1074,8 @@ run :-
             Set<String> objCSet = new LinkedHashSet<>();
             Set<String> ftSet = new LinkedHashSet<>();
             for (String ev : listaFin) {
-                String[] parts = ev.split(",");
-                String s = parts[0];
-                String d = parts[2];
+                String s = eventSource(ev);
+                String d = eventDest(ev);
                 finalesBySrc.computeIfAbsent(s, k -> new ArrayList<>()).add(ev);
                 ftSet.add(s);
                 if (objCSet.add(d)) {
@@ -1064,22 +1085,20 @@ run :-
 
             Map<String, List<String>> intermediosMap = new LinkedHashMap<>();
             for (String ev : intermediosAll) {
-                String src = ev.split(",")[0];
+                String src = eventSource(ev);
                 intermediosMap.computeIfAbsent(src, k -> new ArrayList<>()).add(ev);
             }
 
             Map<String, List<String>> eventoEspecialMap = new LinkedHashMap<>();
             for (String ev : eventoEspecialAll) {
-                String[] parts = ev.split(",");
-                String key = parts[0] + "->" + parts[2];
-                eventoEspecialMap.computeIfAbsent(key, k -> new ArrayList<>()).add(parts[1]);
+                String key = eventSource(ev) + "->" + eventDest(ev);
+                eventoEspecialMap.computeIfAbsent(key, k -> new ArrayList<>()).add(eventRelation(ev));
             }
 
             Map<String, List<String>> finalEspecialMap = new LinkedHashMap<>();
             for (String ev : finalEspecialAll) {
-                String[] parts = ev.split(",");
-                String key = parts[0] + "->" + parts[2];
-                finalEspecialMap.computeIfAbsent(key, k -> new ArrayList<>()).add(parts[1]);
+                String key = eventSource(ev) + "->" + eventDest(ev);
+                finalEspecialMap.computeIfAbsent(key, k -> new ArrayList<>()).add(eventRelation(ev));
             }
 
             log.info("[STEP 4/7 - EVENTS EXTRACTED] [pipelineId={}] inicios={}, finales={}, intermedios={}, eventoEspecial={}, finalEspecial={} | linkObjects={}, ftSources={}, closingTargets={}",
@@ -1107,7 +1126,7 @@ run :-
                         String classified = classifyEvent(evento);
                         if ("interact".equals(evento) || "bind".equals(evento) || "regulate".equals(classified) || "inhibit".equals(classified)) {
                             for (String i : matchingInicios) {
-                                String startSrc = i.substring(0, i.indexOf(','));
+                                String startSrc = eventSource(i);
                                 if (!F.equals(startSrc)) {
                                     uniquePathways.add(i + ";" + fin);
                                     if (uniquePathways.size() >= maxPathwaysLimit) {
@@ -1120,7 +1139,7 @@ run :-
                         if (limitReached.get()) break;
 
                         for (String inEv : matchingInicios) {
-                            String startSrc = inEv.substring(0, inEv.indexOf(','));
+                            String startSrc = eventSource(inEv);
                             List<String> feEvents = finalEspecialMap.getOrDefault(startSrc + "->" + F, Collections.emptyList());
                             for (String fe : feEvents) {
                                 String feClassified = classifyEvent(fe);
@@ -1204,10 +1223,10 @@ run :-
                 Set<String> pathwayObjNames = new LinkedHashSet<>();
 
                 for (int pos = 0; pos < segments.length; pos++) {
-                    String[] parts = segments[pos].split(",");
-                    String first = parts[0].trim().replace("'", "");
-                    String rel = parts[1].trim().replace("'", "");
-                    String second = parts[2].trim().replace("'", "");
+                    String seg = segments[pos];
+                    String first = unquoteAtom(eventSource(seg));
+                    String rel = unquoteAtom(eventRelation(seg));
+                    String second = unquoteAtom(eventDest(seg));
                     evList.add(new PathwayEvent(first, rel, second, pos + 1));
                     pathwayObjNames.add(first);
                     pathwayObjNames.add(second);
@@ -1311,7 +1330,7 @@ run :-
         int effectiveMaxDepth = maxDepth != null && maxDepth > 0 ? maxDepth : configuredMaxDepth;
 
         List<KbObject> objects = resolveBiologicalObjects(inference, pipelineId);
-        if (objects == null || objects.isEmpty()) {
+        if (objects.isEmpty()) {
             throw new IllegalArgumentException("No biological objects found in knowledge base for pipelineId: " + pipelineId);
         }
 
