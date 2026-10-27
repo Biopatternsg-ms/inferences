@@ -29,12 +29,12 @@ import com.biopatternsg.domain.port.out.PrologInferencePort;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.PathwayRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,10 +54,17 @@ import java.util.UUID;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @ApplicationScoped
 public class InferPathwaysUseCase implements InferPathways {
+
+    private static final int DEFAULT_MAX_DEPTH = 5;
+    private static final int DEFAULT_MAX_PATHWAYS_LIMIT = 100_000;
+    private static final int DEFAULT_EXECUTION_TIMEOUT_SECONDS = 300;
+    private static final long PROGRESS_LOG_INTERVAL_MS = 2_000L;
 
     private final PrologInferencePort prologInferencePort;
     private final PathwayRepository pathwayRepository;
@@ -66,6 +73,8 @@ public class InferPathwaysUseCase implements InferPathways {
     private final String outputDirName;
     private final Semaphore concurrencyLimiter;
     private final int timeoutSeconds;
+    private final int maxPathwaysLimit;
+    private final int executionTimeoutSeconds;
 
     @Inject
     public InferPathwaysUseCase(
@@ -75,7 +84,9 @@ public class InferPathwaysUseCase implements InferPathways {
             InferenceRepository inferenceRepository,
             @ConfigProperty(name = "inferences.output.dir", defaultValue = "output") String outputDirName,
             @ConfigProperty(name = "inferences.prolog.concurrency", defaultValue = "4") int maxConcurrency,
-            @ConfigProperty(name = "inferences.prolog.timeout.seconds", defaultValue = "60") int timeoutSeconds) {
+            @ConfigProperty(name = "inferences.prolog.timeout.seconds", defaultValue = "60") int timeoutSeconds,
+            @ConfigProperty(name = "inferences.pathways.max-limit", defaultValue = "100000") int maxPathwaysLimit,
+            @ConfigProperty(name = "inferences.execution.timeout.seconds", defaultValue = "300") int executionTimeoutSeconds) {
         this.prologInferencePort = prologInferencePort;
         this.pathwayRepository = pathwayRepository;
         this.knowledgeBaseRepository = knowledgeBaseRepository;
@@ -83,6 +94,20 @@ public class InferPathwaysUseCase implements InferPathways {
         this.outputDirName = outputDirName;
         this.concurrencyLimiter = new Semaphore(maxConcurrency);
         this.timeoutSeconds = timeoutSeconds;
+        this.maxPathwaysLimit = maxPathwaysLimit > 0 ? maxPathwaysLimit : DEFAULT_MAX_PATHWAYS_LIMIT;
+        this.executionTimeoutSeconds = executionTimeoutSeconds > 0 ? executionTimeoutSeconds : DEFAULT_EXECUTION_TIMEOUT_SECONDS;
+    }
+
+    public InferPathwaysUseCase(
+            PrologInferencePort prologInferencePort,
+            PathwayRepository pathwayRepository,
+            KnowledgeBaseRepository knowledgeBaseRepository,
+            InferenceRepository inferenceRepository,
+            String outputDirName,
+            int maxConcurrency,
+            int timeoutSeconds) {
+        this(prologInferencePort, pathwayRepository, knowledgeBaseRepository, inferenceRepository,
+                outputDirName, maxConcurrency, timeoutSeconds, DEFAULT_MAX_PATHWAYS_LIMIT, DEFAULT_EXECUTION_TIMEOUT_SECONDS);
     }
 
     public InferPathwaysUseCase(
@@ -92,7 +117,8 @@ public class InferPathwaysUseCase implements InferPathways {
             String outputDirName,
             int maxConcurrency,
             int timeoutSeconds) {
-        this(prologInferencePort, pathwayRepository, knowledgeBaseRepository, null, outputDirName, maxConcurrency, timeoutSeconds);
+        this(prologInferencePort, pathwayRepository, knowledgeBaseRepository, null,
+                outputDirName, maxConcurrency, timeoutSeconds, DEFAULT_MAX_PATHWAYS_LIMIT, DEFAULT_EXECUTION_TIMEOUT_SECONDS);
     }
 
     public InferPathwaysUseCase(
@@ -100,7 +126,8 @@ public class InferPathwaysUseCase implements InferPathways {
             String outputDirName,
             int maxConcurrency,
             int timeoutSeconds) {
-        this(prologInferencePort, null, null, null, outputDirName, maxConcurrency, timeoutSeconds);
+        this(prologInferencePort, null, null, null,
+                outputDirName, maxConcurrency, timeoutSeconds, DEFAULT_MAX_PATHWAYS_LIMIT, DEFAULT_EXECUTION_TIMEOUT_SECONDS);
     }
 
     @Override
@@ -228,7 +255,7 @@ public class InferPathwaysUseCase implements InferPathways {
             }
 
             for (String enlace : objEnlace) {
-                intermediosDFS(new ArrayList<>(), enlace, "", 0, objCierre,
+                intermediosDFSLegacy(new ArrayList<>(), enlace, "", 0, objCierre,
                         intermediosMap, ftList, listaInicio, listaFin, objC,
                         generatedPathways, generatedObjects);
             }
@@ -444,7 +471,7 @@ run :-
         return res;
     }
 
-    private void intermediosDFS(
+    private void intermediosDFSLegacy(
             List<String> enlista,
             String objini,
             String patron,
@@ -477,20 +504,20 @@ run :-
                 if (dest.equals(factorT) && !lista.contains(dest) && !cierre.isEmpty()) {
                     List<String> listaAux = new ArrayList<>(lista);
                     listaAux.add(dest);
-                    encadenarPatron(patron + ";" + even, listaAux, listaInicio, listaFin, objC, generatedPathways, generatedObjects);
+                    encadenarPatronLegacy(patron + ";" + even, listaAux, listaInicio, listaFin, objC, generatedPathways, generatedObjects);
                 }
             }
 
             if (!lista.contains(dest) && !cierre.isEmpty()) {
                 String patronaux = patron + ";" + even;
                 if (maxDepth < 10) {
-                    intermediosDFS(lista, dest, patronaux, maxDepth + 1, cierre, intermediosMap, ftList, listaInicio, listaFin, objC, generatedPathways, generatedObjects);
+                    intermediosDFSLegacy(lista, dest, patronaux, maxDepth + 1, cierre, intermediosMap, ftList, listaInicio, listaFin, objC, generatedPathways, generatedObjects);
                 }
             }
         }
     }
 
-    private void encadenarPatron(
+    private void encadenarPatronLegacy(
             String patron,
             List<String> enlista,
             List<String> listaInicio,
@@ -532,6 +559,161 @@ run :-
         }
     }
 
+    /**
+     * DFS optimizado O(1) con indexación de eventos de inicio/fin, control de profundidad configurable,
+     * límite máximo de rutas y timeout de ejecución.
+     */
+    private void intermediosDFSOptimized(
+            Set<String> visitedInPath,
+            String objini,
+            String patron,
+            int currentDepth,
+            int maxAllowedDepth,
+            List<String> objCierre,
+            Map<String, List<String>> intermediosMap,
+            Set<String> ftSet,
+            Map<String, List<String>> iniciosByDest,
+            Map<String, List<String>> finalesBySrc,
+            Set<String> objCSet,
+            Set<String> uniquePathways,
+            long deadlineMs,
+            AtomicBoolean limitReached,
+            AtomicLong dfsVisitedNodes) {
+
+        if (limitReached.get()) {
+            return;
+        }
+        long visitedCount = dfsVisitedNodes.incrementAndGet();
+        if ((visitedCount & 0x3FFL) == 0L && System.currentTimeMillis() > deadlineMs) {
+            limitReached.set(true);
+            return;
+        }
+        if (uniquePathways.size() >= maxPathwaysLimit) {
+            limitReached.set(true);
+            return;
+        }
+
+        visitedInPath.add(objini);
+
+        List<String> solutions = intermediosMap.getOrDefault(objini, Collections.emptyList());
+        for (String even : solutions) {
+            if (limitReached.get()) {
+                break;
+            }
+            int lastComma = even.lastIndexOf(',');
+            String dest = even.substring(lastComma + 1);
+
+            if (visitedInPath.contains(dest)) {
+                continue;
+            }
+
+            if (!hasRemainingClosingObject(objCierre, visitedInPath, dest)) {
+                continue;
+            }
+
+            String nextPatron = patron + ";" + even;
+
+            if (ftSet.contains(dest)) {
+                visitedInPath.add(dest);
+                encadenarPatronOptimized(nextPatron, visitedInPath, iniciosByDest, finalesBySrc, objCSet, uniquePathways, limitReached);
+                visitedInPath.remove(dest);
+                if (limitReached.get()) {
+                    break;
+                }
+            }
+
+            if (currentDepth < maxAllowedDepth) {
+                intermediosDFSOptimized(
+                        visitedInPath,
+                        dest,
+                        nextPatron,
+                        currentDepth + 1,
+                        maxAllowedDepth,
+                        objCierre,
+                        intermediosMap,
+                        ftSet,
+                        iniciosByDest,
+                        finalesBySrc,
+                        objCSet,
+                        uniquePathways,
+                        deadlineMs,
+                        limitReached,
+                        dfsVisitedNodes
+                );
+            }
+        }
+
+        visitedInPath.remove(objini);
+    }
+
+    private boolean hasRemainingClosingObject(List<String> objCierre, Set<String> visitedInPath, String currentDest) {
+        if (objCierre.isEmpty()) {
+            return false;
+        }
+        // Si hay más objetos de cierre que la cantidad total de nodos visitados + 1, siempre queda al menos uno libre
+        if (objCierre.size() > visitedInPath.size() + 1) {
+            return true;
+        }
+        for (String c : objCierre) {
+            if (!c.equals(currentDest) && !visitedInPath.contains(c)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void encadenarPatronOptimized(
+            String patron,
+            Set<String> visitedInPath,
+            Map<String, List<String>> iniciosByDest,
+            Map<String, List<String>> finalesBySrc,
+            Set<String> objCSet,
+            Set<String> uniquePathways,
+            AtomicBoolean limitReached) {
+
+        int firstComma = patron.indexOf(',');
+        String primero = patron.substring(1, firstComma); // salta el ';' inicial
+        int lastComma = patron.lastIndexOf(',');
+        String ultimo = patron.substring(lastComma + 1);
+
+        List<String> candidateInicios = iniciosByDest.getOrDefault(primero, Collections.emptyList());
+        if (candidateInicios.isEmpty()) {
+            return;
+        }
+
+        List<String> candidateFinales = finalesBySrc.getOrDefault(ultimo, Collections.emptyList());
+        if (candidateFinales.isEmpty()) {
+            return;
+        }
+
+        List<String> patrones = new ArrayList<>();
+        Set<String> patronesSeen = new HashSet<>();
+        for (String objin : candidateInicios) {
+            int cIdx = objin.indexOf(',');
+            String startSrc = objin.substring(0, cIdx);
+            if (!visitedInPath.contains(startSrc)) {
+                String pataux = objin + patron;
+                if (patronesSeen.add(pataux)) {
+                    patrones.add(pataux);
+                }
+            }
+        }
+
+        for (String p : patrones) {
+            for (String fin : candidateFinales) {
+                String patronF = p + ";" + fin;
+                List<String> objs = listObjectsPatron(patronF);
+                String lastObj = objs.get(objs.size() - 1);
+                if (objCSet.contains(lastObj)) {
+                    uniquePathways.add(patronF);
+                    if (uniquePathways.size() >= maxPathwaysLimit) {
+                        limitReached.set(true);
+                        return;
+                    }
+                }
+            }
+        }
+    }
 
     private Path getLegacyDir() {
         Path legacyDir = Paths.get("src/main/resources/legacy").toAbsolutePath();
@@ -583,10 +765,10 @@ run :-
                 log.debug("[CLI] {}", line);
             }
         }
-        boolean completed = p.waitFor(60, TimeUnit.SECONDS);
+        boolean completed = p.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!completed) {
             p.destroyForcibly();
-            throw new TimeoutException("CLI process timed out after 60s");
+            throw new TimeoutException("CLI process timed out after " + timeoutSeconds + "s");
         }
         if (p.exitValue() != 0) {
             String err = String.join("\n", outputLines);
@@ -595,14 +777,24 @@ run :-
         }
     }
 
+    private String escapePrologAtom(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("'", "\\'");
+    }
+
     @Override
     public DynamicExecutionResult runDynamicInference(DynamicInferenceInput input) {
         if (input == null) {
             throw new IllegalArgumentException("DynamicInferenceInput cannot be null");
         }
         long startTime = System.currentTimeMillis();
+        long deadlineMs = startTime + (executionTimeoutSeconds * 1000L);
         boolean acquired = false;
         Path ramDir = null;
+        String pipelineId = input.getPipelineId() != null ? input.getPipelineId() : "anon";
+        int effectiveMaxDepth = input.getMaxDepth() > 0
+                ? input.getMaxDepth()
+                : DEFAULT_MAX_DEPTH;
 
         try {
             acquired = concurrencyLimiter.tryAcquire(timeoutSeconds, TimeUnit.SECONDS);
@@ -612,7 +804,6 @@ run :-
 
             // 1. Crear directorio en RAM (/dev/shm si está disponible)
             Path shm = Paths.get("/dev/shm");
-            String pipelineId = input.getPipelineId() != null ? input.getPipelineId() : "anon";
             String uniqueName = "inferences_run_" + pipelineId + "_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
             if (Files.exists(shm) && Files.isWritable(shm)) {
                 ramDir = shm.resolve(uniqueName);
@@ -621,17 +812,19 @@ run :-
                 ramDir = Files.createTempDirectory(uniqueName);
             }
 
-            // 2. Resolver roles principales y generar pathwaysObjects.pl
+            // 2. Resolver roles principales y generar pathwaysObjects.pl + hechos indexados
             Map<String, String> primaryRoleMap = new LinkedHashMap<>();
             StringBuilder objectsPl = new StringBuilder();
             objectsPl.append(":- style_check(-discontiguous).\n");
-            objectsPl.append(":- discontiguous protein/1, enzyme/1, ligand/1, receptor/1, transcription_factor/1.\n\n");
+            objectsPl.append(":- discontiguous protein/1, enzyme/1, ligand/1, receptor/1, transcription_factor/1, restricted_obj/1, closing_obj/1.\n\n");
 
             Set<String> allObjectNames = new LinkedHashSet<>();
+            int roleFactsCount = 0;
             if (input.getObjects() != null) {
                 for (KbObject obj : input.getObjects()) {
                     if (obj.getName() == null || obj.getName().isBlank()) continue;
                     String name = obj.getName().trim();
+                    String escapedName = escapePrologAtom(name);
                     allObjectNames.add(name);
                     String primaryRole = resolvePrimaryRole(obj.getRoles());
                     primaryRoleMap.put(name, primaryRole);
@@ -640,21 +833,23 @@ run :-
                     for (String r : roles) {
                         String cleanR = r.toLowerCase().trim();
                         if (cleanR.equals("ligand")) {
-                            objectsPl.append("ligand('").append(name).append("').\n");
+                            objectsPl.append("ligand('").append(escapedName).append("').\n");
+                            roleFactsCount++;
                         } else if (cleanR.equals("receptor")) {
-                            objectsPl.append("receptor('").append(name).append("').\n");
+                            objectsPl.append("receptor('").append(escapedName).append("').\n");
+                            roleFactsCount++;
                         } else if (cleanR.equals("enzyme")) {
-                            objectsPl.append("enzyme('").append(name).append("').\n");
+                            objectsPl.append("enzyme('").append(escapedName).append("').\n");
+                            roleFactsCount++;
                         } else if (cleanR.equals("transcription_factor") || cleanR.equals("tf")) {
-                            objectsPl.append("transcription_factor('").append(name).append("').\n");
+                            objectsPl.append("transcription_factor('").append(escapedName).append("').\n");
+                            roleFactsCount++;
                         }
                     }
-                    objectsPl.append("protein('").append(name).append("').\n");
+                    objectsPl.append("protein('").append(escapedName).append("').\n");
+                    roleFactsCount++;
                 }
             }
-
-            Path objFile = ramDir.resolve("pathwaysObjects.pl");
-            Files.writeString(objFile, objectsPl.toString());
 
             // 3. Procesar eventos (resumir o usar directos) y generar kBase_optimized.pl
             List<PathwayEvent> sourceEvents = input.getEvents() != null ? input.getEvents() : List.of();
@@ -678,38 +873,53 @@ run :-
 
                 String key = f + "|" + r + "|" + s;
                 if (seenEvents.add(key)) {
-                    kbPl.append("event('").append(f).append("', ").append(r).append(", '").append(s).append("').\n");
+                    kbPl.append("event('").append(escapePrologAtom(f)).append("', ")
+                            .append(r).append(", '")
+                            .append(escapePrologAtom(s)).append("').\n");
                 }
             }
+
+            // 4. Determinar moléculas restringidas e inyectarlas como hechos indexados O(1) en Prolog
+            List<String> restricted = input.getRestrictedObjects() != null && !input.getRestrictedObjects().isEmpty()
+                    ? input.getRestrictedObjects()
+                    : new ArrayList<>(allObjectNames);
+            Set<String> uniqueRestricted = new LinkedHashSet<>();
+            for (String rObj : restricted) {
+                if (rObj != null && !rObj.isBlank()) {
+                    String trimmed = rObj.trim();
+                    if (uniqueRestricted.add(trimmed)) {
+                        objectsPl.append("restricted_obj('").append(escapePrologAtom(trimmed)).append("').\n");
+                    }
+                }
+            }
+
+            // 5. Configurar filtro opcional de objetos de cierre (closingObjects) como hechos indexados O(1)
+            boolean hasClosingFilter = false;
+            Set<String> uniqueClosing = new LinkedHashSet<>();
+            if (input.getClosingObjects() != null && !input.getClosingObjects().isEmpty()) {
+                for (String cObj : input.getClosingObjects()) {
+                    if (cObj != null && !cObj.isBlank()) {
+                        String trimmed = cObj.trim();
+                        if (uniqueClosing.add(trimmed)) {
+                            objectsPl.append("closing_obj('").append(escapePrologAtom(trimmed)).append("').\n");
+                            hasClosingFilter = true;
+                        }
+                    }
+                }
+            }
+            String closingFilter = hasClosingFilter ? "    closing_obj(B),\n" : "";
+
+            Path objFile = ramDir.resolve("pathwaysObjects.pl");
+            Files.writeString(objFile, objectsPl.toString());
 
             Path kbFile = ramDir.resolve("kBase_optimized.pl");
             Files.writeString(kbFile, kbPl.toString());
 
-            // 4. Determinar lista L de moléculas restringidas
-            List<String> restricted = input.getRestrictedObjects() != null && !input.getRestrictedObjects().isEmpty()
-                    ? input.getRestrictedObjects()
-                    : new ArrayList<>(allObjectNames);
+            log.info("[STEP 2/7 - PROLOG GEN] [pipelineId={}] Generated Prolog files in '{}': objects={} (roleFacts={}), restrictedObjects={}, closingObjects={}, sourceEvents={} -> effectiveEvents={} (summarizeKb={})",
+                    pipelineId, ramDir, allObjectNames.size(), roleFactsCount, uniqueRestricted.size(),
+                    uniqueClosing.size(), sourceEvents.size(), seenEvents.size(), input.isSummarizeKb());
 
-            StringBuilder restrictedPrologList = new StringBuilder("[");
-            for (int i = 0; i < restricted.size(); i++) {
-                if (i > 0) restrictedPrologList.append(", ");
-                restrictedPrologList.append("'").append(restricted.get(i).trim()).append("'");
-            }
-            restrictedPrologList.append("]");
-
-            // 5. Configurar filtro opcional de objetos de cierre (closingObjects)
-            String closingFilter = "";
-            if (input.getClosingObjects() != null && !input.getClosingObjects().isEmpty()) {
-                StringBuilder closingListStr = new StringBuilder("[");
-                for (int i = 0; i < input.getClosingObjects().size(); i++) {
-                    if (i > 0) closingListStr.append(", ");
-                    closingListStr.append("'").append(input.getClosingObjects().get(i).trim()).append("'");
-                }
-                closingListStr.append("]");
-                closingFilter = "    member(B, " + closingListStr + "),\n";
-            }
-
-            // 6. Generar dump_runner.pl
+            // 6. Generar dump_runner.pl con indexación O(1) sobre event/3
             Path iniciosFile = ramDir.resolve("inicios.json");
             Path finalesFile = ramDir.resolve("finales.json");
             Path intermediosFile = ramDir.resolve("intermedios.json");
@@ -726,41 +936,41 @@ restrictions_start_ligand(A, B) :-
     protein(B),
     A \\= B.
 
-inicio_rule(A, E, B, L) :-
-    member(A, L),
-    member(B, L),
+inicio_rule(A, E, B) :-
     event(A, E, B),
     member(E, [association, bind]),
+    restricted_obj(A),
+    restricted_obj(B),
     restrictions_start_ligand(A, B).
 
-final_rule(A, E, B, L) :-
-    member(A, L),
-    member(B, L),
-{closing_filter}    event(A, E, B),
-    member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]),
+final_rule(A, E, B) :-
+    event(A, E, B),
+{closing_filter}    member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]),
+    restricted_obj(A),
+    restricted_obj(B),
     protein(A),
     protein(B),
     A \\= B.
 
-intermedios_rule(A, E, B, L) :-
-    member(A, L),
-    member(B, L),
+intermedios_rule(A, E, B) :-
     event(A, E, B),
     member(E, [association]),
+    restricted_obj(A),
+    restricted_obj(B),
     protein(A),
     protein(B),
     A \\= B.
 
-evento_especial_rule(A, E, B, L) :-
-    member(A, L),
-    member(B, L),
+evento_especial_rule(A, E, B) :-
     event(A, E, B),
+    restricted_obj(A),
+    restricted_obj(B),
     member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]).
 
-final_especial_rule(A, E, B, L) :-
-    member(A, L),
-    member(B, L),
+final_especial_rule(A, E, B) :-
     event(A, E, B),
+    restricted_obj(A),
+    restricted_obj(B),
     member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]).
 
 write_json_events([], _).
@@ -779,20 +989,19 @@ dump_list(File, List) :-
     close(S).
 
 run :-
-    L = {restricted_objects},
-    findall([A, E, B], inicio_rule(A, E, B, L), Inicios),
+    findall([A, E, B], inicio_rule(A, E, B), Inicios),
     dump_list('{inicios_file}', Inicios),
     
-    findall([A, E, B], final_rule(A, E, B, L), Finales),
+    findall([A, E, B], final_rule(A, E, B), Finales),
     dump_list('{finales_file}', Finales),
     
-    findall([A, E, B], intermedios_rule(A, E, B, L), Intermedios),
+    findall([A, E, B], intermedios_rule(A, E, B), Intermedios),
     dump_list('{intermedios_file}', Intermedios),
     
-    findall([A, E, B], evento_especial_rule(A, E, B, L), EvEsp),
+    findall([A, E, B], evento_especial_rule(A, E, B), EvEsp),
     dump_list('{ev_esp_file}', EvEsp),
     
-    findall([A, E, B], final_especial_rule(A, E, B, L), FinEsp),
+    findall([A, E, B], final_especial_rule(A, E, B), FinEsp),
     dump_list('{fin_esp_file}', FinEsp),
     halt.
 
@@ -803,7 +1012,6 @@ run :-
                     .replace("{obj_file}", normalizePath(objFile.toString()))
                     .replace("{kb_file}", normalizePath(kbFile.toString()))
                     .replace("{closing_filter}", closingFilter)
-                    .replace("{restricted_objects}", restrictedPrologList.toString())
                     .replace("{inicios_file}", normalizePath(iniciosFile.toString()))
                     .replace("{finales_file}", normalizePath(finalesFile.toString()))
                     .replace("{intermedios_file}", normalizePath(intermediosFile.toString()))
@@ -814,14 +1022,45 @@ run :-
             Files.writeString(runnerFile, runnerContent);
 
             // 7. Ejecutar SWI-Prolog en el directorio RAM
+            log.info("[STEP 3/7 - SWI-PROLOG EXEC] [pipelineId={}] Launching swipl process...", pipelineId);
+            long prologStart = System.currentTimeMillis();
             runProcess("swipl", "-q", "-s", normalizePath(runnerFile.toString()));
+            long prologElapsed = System.currentTimeMillis() - prologStart;
+            log.info("[STEP 3/7 - SWI-PROLOG EXEC] [pipelineId={}] swipl completed in {} ms", pipelineId, prologElapsed);
 
-            // 8. Cargar e indexar eventos biológicos
+            // 8. Cargar e indexar eventos biológicos en estructuras O(1)
             List<String> listaInicio = loadEventsJson(ramDir, "inicios.json");
             List<String> listaFin = loadEventsJson(ramDir, "finales.json");
             List<String> intermediosAll = loadEventsJson(ramDir, "intermedios.json");
             List<String> eventoEspecialAll = loadEventsJson(ramDir, "evento_especial.json");
             List<String> finalEspecialAll = loadEventsJson(ramDir, "final_especial.json");
+
+            Map<String, List<String>> iniciosByDest = new LinkedHashMap<>();
+            List<String> objEnlace = new ArrayList<>();
+            Set<String> objEnlaceSeen = new HashSet<>();
+            for (String ev : listaInicio) {
+                String[] parts = ev.split(",");
+                String dest = parts[2];
+                iniciosByDest.computeIfAbsent(dest, k -> new ArrayList<>()).add(ev);
+                if (objEnlaceSeen.add(dest)) {
+                    objEnlace.add(dest);
+                }
+            }
+
+            Map<String, List<String>> finalesBySrc = new LinkedHashMap<>();
+            List<String> objCierre = new ArrayList<>();
+            Set<String> objCSet = new LinkedHashSet<>();
+            Set<String> ftSet = new LinkedHashSet<>();
+            for (String ev : listaFin) {
+                String[] parts = ev.split(",");
+                String s = parts[0];
+                String d = parts[2];
+                finalesBySrc.computeIfAbsent(s, k -> new ArrayList<>()).add(ev);
+                ftSet.add(s);
+                if (objCSet.add(d)) {
+                    objCierre.add(d);
+                }
+            }
 
             Map<String, List<String>> intermediosMap = new LinkedHashMap<>();
             for (String ev : intermediosAll) {
@@ -843,100 +1082,117 @@ run :-
                 finalEspecialMap.computeIfAbsent(key, k -> new ArrayList<>()).add(parts[1]);
             }
 
-            List<String> objEnlace = new ArrayList<>();
-            for (String ev : listaInicio) {
-                String dest = ev.split(",")[2];
-                if (!objEnlace.contains(dest)) {
-                    objEnlace.add(dest);
-                }
-            }
+            log.info("[STEP 4/7 - EVENTS EXTRACTED] [pipelineId={}] inicios={}, finales={}, intermedios={}, eventoEspecial={}, finalEspecial={} | linkObjects={}, ftSources={}, closingTargets={}",
+                    pipelineId, listaInicio.size(), listaFin.size(), intermediosAll.size(),
+                    eventoEspecialAll.size(), finalEspecialAll.size(),
+                    objEnlace.size(), ftSet.size(), objCierre.size());
 
-            List<String> objCierre = new ArrayList<>();
-            List<String> ftList = new ArrayList<>();
-            for (String ev : listaFin) {
-                String[] parts = ev.split(",");
-                String s = parts[0];
-                String d = parts[2];
-                if (!ftList.contains(s)) {
-                    ftList.add(s);
-                }
-                if (!objCierre.contains(d)) {
-                    objCierre.add(d);
-                }
-            }
+            Set<String> uniquePathways = new LinkedHashSet<>();
+            AtomicBoolean limitReached = new AtomicBoolean(false);
 
-            List<String> generatedPathways = new ArrayList<>();
-            List<List<String>> generatedObjects = new ArrayList<>();
-
-            // 9. Encadenamiento 2-eventos y 3-eventos especiales
+            // 9. Encadenamiento optimizado O(1) de 2-eventos y 3-eventos especiales
+            long shortStart = System.currentTimeMillis();
             for (String E : objEnlace) {
+                if (limitReached.get()) break;
+                List<String> matchingInicios = iniciosByDest.getOrDefault(E, Collections.emptyList());
+                if (matchingInicios.isEmpty()) continue;
+
                 for (String F : objCierre) {
+                    if (limitReached.get()) break;
                     List<String> specialEvents = eventoEspecialMap.getOrDefault(E + "->" + F, Collections.emptyList());
+                    if (specialEvents.isEmpty()) continue;
+
                     for (String evento : specialEvents) {
                         String fin = E + "," + evento + "," + F;
-                        String[] sep = fin.split(",");
-                        String classified = classifyEvent(sep[1]);
-                        if ("interact".equals(sep[1]) || "bind".equals(sep[1]) || "regulate".equals(classified) || "inhibit".equals(classified)) {
-                            for (String i : listaInicio) {
-                                String[] sep1 = i.split(",");
-                                if (E.equals(sep1[2]) && !F.equals(sep1[0])) {
-                                    String patron = i + ";" + fin;
-                                    List<String> objs = listObjectsPatron(patron);
-                                    generatedPathways.add(patron);
-                                    generatedObjects.add(objs);
-                                }
-                            }
-                        }
-
-                        for (String inEv : listaInicio) {
-                            String[] sep1 = inEv.split(",");
-                            for (String f : objCierre) {
-                                List<String> feEvents = finalEspecialMap.getOrDefault(sep1[0] + "->" + f, Collections.emptyList());
-                                for (String fe : feEvents) {
-                                    String eFin = sep1[0] + "," + fe + "," + f;
-                                    String feClassified = classifyEvent(fe);
-                                    if (E.equals(sep1[2]) && sep[2].equals(f) && ("regulate".equals(feClassified) || "inhibit".equals(feClassified))) {
-                                        String patron = inEv + ";" + fin;
-                                        List<String> objs = new ArrayList<>(listObjectsPatron(patron));
-                                        patron += ";" + eFin;
-                                        objs.addAll(listObjectsPatron(eFin));
-                                        generatedPathways.add(patron);
-                                        generatedObjects.add(objs);
+                        String classified = classifyEvent(evento);
+                        if ("interact".equals(evento) || "bind".equals(evento) || "regulate".equals(classified) || "inhibit".equals(classified)) {
+                            for (String i : matchingInicios) {
+                                String startSrc = i.substring(0, i.indexOf(','));
+                                if (!F.equals(startSrc)) {
+                                    uniquePathways.add(i + ";" + fin);
+                                    if (uniquePathways.size() >= maxPathwaysLimit) {
+                                        limitReached.set(true);
+                                        break;
                                     }
                                 }
                             }
                         }
+                        if (limitReached.get()) break;
+
+                        for (String inEv : matchingInicios) {
+                            String startSrc = inEv.substring(0, inEv.indexOf(','));
+                            List<String> feEvents = finalEspecialMap.getOrDefault(startSrc + "->" + F, Collections.emptyList());
+                            for (String fe : feEvents) {
+                                String feClassified = classifyEvent(fe);
+                                if ("regulate".equals(feClassified) || "inhibit".equals(feClassified)) {
+                                    String eFin = startSrc + "," + fe + "," + F;
+                                    uniquePathways.add(inEv + ";" + fin + ";" + eFin);
+                                    if (uniquePathways.size() >= maxPathwaysLimit) {
+                                        limitReached.set(true);
+                                        break;
+                                    }
+                                }
+                            }
+                            if (limitReached.get()) break;
+                        }
                     }
                 }
             }
+            long shortElapsed = System.currentTimeMillis() - shortStart;
+            log.info("[STEP 5/7 - SHORT PATTERNS] [pipelineId={}] Generated {} unique short pathways (2-3 events) in {} ms",
+                    pipelineId, uniquePathways.size(), shortElapsed);
 
-            // 10. Patrones multietapa con eventos intermedios (DFS)
-            List<String> objC = new ArrayList<>();
-            for (String f : listaFin) {
-                String c = f.split(",")[2];
-                if (!objC.contains(c)) {
-                    objC.add(c);
+            // 10. Patrones multietapa con eventos intermedios (DFS optimizado con logs de progreso)
+            long dfsStart = System.currentTimeMillis();
+            long lastLogTime = dfsStart;
+            AtomicLong dfsVisitedNodes = new AtomicLong(0L);
+            log.info("[STEP 6/7 - DFS MULTI-STEP] [pipelineId={}] Starting multi-step DFS across {} link objects (effectiveMaxDepth={}, maxPathwaysLimit={}, timeout={}s)",
+                    pipelineId, objEnlace.size(), effectiveMaxDepth, maxPathwaysLimit, executionTimeoutSeconds);
+
+            for (int idx = 0; idx < objEnlace.size(); idx++) {
+                if (limitReached.get() || System.currentTimeMillis() > deadlineMs) {
+                    limitReached.set(true);
+                    break;
+                }
+                String enlace = objEnlace.get(idx);
+                Set<String> visitedInPath = new HashSet<>();
+                intermediosDFSOptimized(
+                        visitedInPath,
+                        enlace,
+                        "",
+                        0,
+                        effectiveMaxDepth,
+                        objCierre,
+                        intermediosMap,
+                        ftSet,
+                        iniciosByDest,
+                        finalesBySrc,
+                        objCSet,
+                        uniquePathways,
+                        deadlineMs,
+                        limitReached,
+                        dfsVisitedNodes
+                );
+
+                long now = System.currentTimeMillis();
+                if (now - lastLogTime >= PROGRESS_LOG_INTERVAL_MS || idx == objEnlace.size() - 1) {
+                    lastLogTime = now;
+                    int pct = objEnlace.isEmpty() ? 100 : (int) (((idx + 1) * 100L) / objEnlace.size());
+                    log.info("[STEP 6/7 - DFS PROGRESS] [pipelineId={}] Link object {}/{} ({}%) | uniquePathways={} | dfsNodesVisited={} | elapsed={} ms",
+                            pipelineId, idx + 1, objEnlace.size(), pct, uniquePathways.size(),
+                            dfsVisitedNodes.get(), now - startTime);
                 }
             }
 
-            for (String enlace : objEnlace) {
-                intermediosDFS(new ArrayList<>(), enlace, "", 0, objCierre,
-                        intermediosMap, ftList, listaInicio, listaFin, objC,
-                        generatedPathways, generatedObjects);
-            }
-
-            // 11. Deduplicación
-            Set<String> seen = new HashSet<>();
-            List<String> uniquePathways = new ArrayList<>();
-            for (String p : generatedPathways) {
-                if (seen.add(p)) {
-                    uniquePathways.add(p);
-                }
+            if (limitReached.get()) {
+                log.warn("[STEP 6/7 - DFS LIMIT REACHED] [pipelineId={}] Search stopped safely at {} unique pathways (maxLimit={}, timeout={}s, elapsed={} ms)",
+                        pipelineId, uniquePathways.size(), maxPathwaysLimit, executionTimeoutSeconds,
+                        System.currentTimeMillis() - startTime);
             }
 
             long durationMs = System.currentTimeMillis() - startTime;
 
-            // 12. Construir BiologicalPathway y PathwayGraph
+            // 11. Construir BiologicalPathway y PathwayGraph
             Map<String, Long> edgeCounts = new LinkedHashMap<>();
             Map<String, String> graphNodes = new LinkedHashMap<>();
             List<BiologicalPathway> domainPathways = new ArrayList<>(uniquePathways.size());
@@ -998,8 +1254,8 @@ run :-
                     .edges(edges)
                     .build();
 
-            log.info("Dynamic inference completed in {} ms: {} pathways, {} nodes, {} edges",
-                    durationMs, domainPathways.size(), nodes.size(), edges.size());
+            log.info("[STEP 7/7 - GRAPH BUILT] [pipelineId={}] Dynamic inference completed in {} ms: {} pathways, {} nodes, {} edges",
+                    pipelineId, durationMs, domainPathways.size(), nodes.size(), edges.size());
 
             return DynamicExecutionResult.builder()
                     .pipelineId(pipelineId)
@@ -1010,9 +1266,13 @@ run :-
                     .graph(graph)
                     .build();
 
-        } catch (Exception e) {
-            log.error("Failed executing dynamic inference in RAM-disk", e);
-            throw new RuntimeException("Dynamic inference error: " + e.getMessage(), e);
+        } catch (Throwable t) {
+            log.error("[INFERENCE ERROR] [pipelineId={}] Failed executing dynamic inference in RAM-disk after {} ms: {}",
+                    pipelineId, System.currentTimeMillis() - startTime, t.getMessage(), t);
+            if (t instanceof Error err) {
+                throw err;
+            }
+            throw new RuntimeException("Dynamic inference error: " + t.getMessage(), t);
         } finally {
             if (ramDir != null) {
                 deleteDirectoryRecursively(ramDir);
@@ -1038,14 +1298,16 @@ run :-
             throw new IllegalStateException("Repositories are not configured for pipeline inference");
         }
 
-        log.info("Starting production pipeline inference for pipelineId: {}, user: {}, summarizeKb: {}",
-                pipelineId, user, summarizeKb);
-
         if (inferenceRepository == null) {
             throw new IllegalStateException("InferenceRepository is not configured for pipeline inference");
         }
         Inference inference = inferenceRepository.findByPipelineId(pipelineId)
                 .orElseThrow(() -> new IllegalArgumentException("No inference configuration found in inferences collection for pipelineId: " + pipelineId));
+
+        boolean effectiveSummarizeKb = summarizeKb || Boolean.TRUE.equals(inference.getSummarizeKb());
+        int effectiveMaxDepth = (maxDepth != null && maxDepth > 0)
+                ? maxDepth
+                : (inference.getMaxDepth() != null && inference.getMaxDepth() > 0 ? inference.getMaxDepth() : DEFAULT_MAX_DEPTH);
 
         List<KbObject> objects = resolveBiologicalObjects(inference, pipelineId);
         if (objects == null || objects.isEmpty()) {
@@ -1063,10 +1325,18 @@ run :-
             throw new IllegalArgumentException("No biological events found in knowledge base for pipelineId: " + pipelineId);
         }
 
+        List<String> effectiveClosing = (closingObjects != null && !closingObjects.isEmpty())
+                ? closingObjects
+                : (inference.getClosingObjects() != null ? inference.getClosingObjects() : List.of());
+
+        log.info("[STEP 1/7 - KB LOAD] [pipelineId={}] Starting production inference: user={}, restrictionLevel={}, objects={}, events={}, closingObjects={}, summarizeKb={}, maxDepth={}",
+                pipelineId, user, restrictionLevel, objects.size(), events.size(),
+                effectiveClosing.size(), effectiveSummarizeKb, effectiveMaxDepth);
+
         // 1. Borrar inmediatamente cualquier información de inferencia previa del pipeline (vías y grafo)
         long deletedPrevious = pathwayRepository.deleteByPipelineId(pipelineId);
-        log.info("Cleared {} previous pathways and graph for pipelineId: {} before launching new inference",
-                deletedPrevious, pipelineId);
+        log.info("[STEP 1/7 - KB LOAD] [pipelineId={}] Cleared {} previous pathways before launching new inference",
+                pipelineId, deletedPrevious);
 
         DynamicInferenceInput input = DynamicInferenceInput.builder()
                 .pipelineId(pipelineId)
@@ -1074,27 +1344,29 @@ run :-
                 .events(events)
                 .objects(objects)
                 .restrictedObjects(restrictedObjects != null ? restrictedObjects : List.of())
-                .closingObjects(closingObjects != null ? closingObjects : List.of())
-                .summarizeKb(summarizeKb)
-                .maxDepth(maxDepth != null && maxDepth > 0 ? maxDepth : 10)
+                .closingObjects(effectiveClosing)
+                .summarizeKb(effectiveSummarizeKb)
+                .maxDepth(effectiveMaxDepth)
                 .build();
 
         DynamicExecutionResult result = runDynamicInference(input);
 
         if (result.getPathways() != null && !result.getPathways().isEmpty()) {
-            log.info("Persisting {} inferred pathways to MongoDB for pipelineId: {}",
-                    result.getPathways().size(), pipelineId);
+            log.info("[STEP 7/7 - MONGO PERSISTENCE] [pipelineId={}] Persisting {} inferred pathways to MongoDB...",
+                    pipelineId, result.getPathways().size());
             pathwayRepository.savePathwaysBatch(result.getPathways());
+        } else {
+            log.info("[STEP 7/7 - MONGO PERSISTENCE] [pipelineId={}] 0 pathways generated; skipping batch insert", pipelineId);
         }
 
         if (result.getGraph() != null) {
-            log.info("Persisting pathway graph ({} nodes, {} edges) to MongoDB for pipelineId: {}",
-                    result.getGraph().getNodes().size(), result.getGraph().getEdges().size(), pipelineId);
+            log.info("[STEP 7/7 - MONGO PERSISTENCE] [pipelineId={}] Persisting pathway graph ({} nodes, {} edges) to MongoDB...",
+                    pipelineId, result.getGraph().getNodes().size(), result.getGraph().getEdges().size());
             pathwayRepository.savePathwayGraph(result.getGraph());
         }
 
-        log.info("Production pipeline inference finished successfully for pipelineId: {} in {} ms",
-                pipelineId, result.getExecutionTimeMs());
+        log.info("[INFERENCE COMPLETE] [pipelineId={}] Production pipeline inference finished successfully in {} ms (pathways={})",
+                pipelineId, result.getExecutionTimeMs(), result.getGeneratedPathwaysCount());
 
         return result;
     }

@@ -66,8 +66,8 @@ class SaveClosingObjectsUseCaseTest {
     @Test
     @DisplayName("execute should throw IllegalArgumentException when pipelineId is null or blank")
     void execute_nullPipelineId_throws() {
-        assertThrows(IllegalArgumentException.class, () -> useCase.execute(null, List.of("TP53"), false, 10, "user-1"));
-        assertThrows(IllegalArgumentException.class, () -> useCase.execute("   ", List.of("TP53"), false, 10, "user-1"));
+        assertThrows(IllegalArgumentException.class, () -> useCase.execute(null, List.of("TP53"), false, 5, "user-1"));
+        assertThrows(IllegalArgumentException.class, () -> useCase.execute("   ", List.of("TP53"), false, 5, "user-1"));
     }
 
     @Test
@@ -101,10 +101,10 @@ class SaveClosingObjectsUseCaseTest {
                         .build())
                 .build();
 
-        when(inferPathways.runPipelineInference(eq(pipeId), eq("user-1"), isNull(), eq(closing), eq(false), eq(10)))
+        when(inferPathways.runPipelineInference(eq(pipeId), eq("user-1"), isNull(), eq(closing), eq(false), eq(5)))
                 .thenReturn(mockResult);
 
-        DynamicExecutionResult result = useCase.execute(pipeId, closing, false, 10, "user-1");
+        DynamicExecutionResult result = useCase.execute(pipeId, closing, false, 5, "user-1");
 
         assertNotNull(result);
         assertEquals(2, result.getPathways().size());
@@ -147,7 +147,7 @@ class SaveClosingObjectsUseCaseTest {
     }
 
     @Test
-    @DisplayName("execute should handle empty closing objects (user selects none)")
+    @DisplayName("execute should handle empty closing objects and use default summarizeKb=true and maxDepth=5")
     void execute_emptyClosingObjects() {
         String pipeId = "pipe-200";
         Inference inference = Inference.builder().pipelineId(pipeId).build();
@@ -168,7 +168,7 @@ class SaveClosingObjectsUseCaseTest {
 
         assertNotNull(result);
         assertTrue(inference.getClosingObjects().isEmpty());
-        verify(inferPathways).runPipelineInference(eq(pipeId), eq("user-2"), isNull(), eq(List.of()), eq(false), eq(10));
+        verify(inferPathways).runPipelineInference(eq(pipeId), eq("user-2"), isNull(), eq(List.of()), eq(true), eq(5));
     }
 
     @Test
@@ -179,13 +179,32 @@ class SaveClosingObjectsUseCaseTest {
         when(inferPathways.runPipelineInference(any(), any(), any(), any(), anyBoolean(), anyInt()))
                 .thenThrow(new RuntimeException("Prolog timeout"));
 
-        assertThrows(RuntimeException.class, () -> useCase.execute(pipeId, List.of("TP53"), false, 10, "user-err"));
+        assertThrows(RuntimeException.class, () -> useCase.execute(pipeId, List.of("TP53"), false, 5, "user-err"));
 
         verify(configAndControlRepository).updateStep(
                 eq(pipeId),
                 eq("INFER_PATHWAYS"),
                 eq("FAILED"),
                 eq("user-err"),
+                anyMap()
+        );
+    }
+
+    @Test
+    @DisplayName("execute should mark INFER_PATHWAYS as FAILED even if a fatal Error (e.g. OutOfMemoryError) is thrown")
+    void execute_inferenceThrowsError_marksFailed() {
+        String pipeId = "pipe-oom";
+        when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.of(new Inference()));
+        when(inferPathways.runPipelineInference(any(), any(), any(), any(), anyBoolean(), anyInt()))
+                .thenThrow(new OutOfMemoryError("Java heap space"));
+
+        assertThrows(OutOfMemoryError.class, () -> useCase.execute(pipeId, List.of(), true, 5, "user-oom"));
+
+        verify(configAndControlRepository).updateStep(
+                eq(pipeId),
+                eq("INFER_PATHWAYS"),
+                eq("FAILED"),
+                eq("user-oom"),
                 anyMap()
         );
     }

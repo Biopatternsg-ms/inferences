@@ -26,6 +26,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,11 +58,13 @@ class ManageInferenceUseCaseTest {
                 .id("60c72b2f9b1d8b2bad000001")
                 .pipelineId("pipeline-123")
                 .restrictionLevel("RESTRICTED")
+                .summarizeKb(true)
+                .maxDepth(5)
                 .build();
     }
 
     @Test
-    @DisplayName("createInference saves inference configuration and updates pipeline step")
+    @DisplayName("createInference saves inference configuration with defaults (summarizeKb=true, maxDepth=5) and updates pipeline step")
     void testCreateInference() {
         when(inferenceRepository.save(any(Inference.class))).thenReturn(sampleInference);
 
@@ -75,13 +78,21 @@ class ManageInferenceUseCaseTest {
         assertNotNull(created);
         assertEquals("pipeline-123", created.getPipelineId());
         assertEquals("RESTRICTED", created.getRestrictionLevel());
+        assertEquals(Boolean.TRUE, input.getSummarizeKb());
+        assertEquals(5, input.getMaxDepth());
         verify(inferenceRepository).save(any(Inference.class));
+
+        Map<String, String> expectedMetrics = new LinkedHashMap<>();
+        expectedMetrics.put("Restriction Level", "RESTRICTED");
+        expectedMetrics.put("Summarize KB", "true");
+        expectedMetrics.put("Max Depth", "5");
+
         verify(configAndControlRepository).updateStep(
                 "pipeline-123",
                 "CONFIGURE_INFERENCES",
                 "COMPLETED",
                 "user-123",
-                Map.of("Restriction Level", "RESTRICTED")
+                expectedMetrics
         );
     }
 

@@ -37,8 +37,25 @@ public class InferenceRepositoryAdapter implements InferenceRepository, PanacheM
     public Inference save(Inference inference) {
         InferenceCollection existing = find("pipelineId", inference.getPipelineId()).firstResult();
         if (existing != null) {
-            existing.setRestrictionLevel(inference.getRestrictionLevel());
-            existing.setRoles(inference.getRoles());
+            if (inference.getRestrictionLevel() != null) {
+                existing.setRestrictionLevel(inference.getRestrictionLevel());
+            }
+            if (inference.getSummarizeKb() != null) {
+                existing.setSummarizeKb(inference.getSummarizeKb());
+            } else if (existing.getSummarizeKb() == null) {
+                existing.setSummarizeKb(Boolean.TRUE);
+            }
+            if (inference.getMaxDepth() != null && inference.getMaxDepth() > 0) {
+                existing.setMaxDepth(inference.getMaxDepth());
+            } else if (existing.getMaxDepth() == null || existing.getMaxDepth() <= 0) {
+                existing.setMaxDepth(5);
+            }
+            if (inference.getRoles() != null) {
+                existing.setRoles(inference.getRoles());
+            }
+            if (inference.getClosingObjects() != null) {
+                existing.setClosingObjects(inference.getClosingObjects());
+            }
             update(existing);
             return inferenceMapper.toModel(existing);
         }

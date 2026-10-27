@@ -21,6 +21,7 @@ import com.biopatternsg.domain.model.DynamicInferenceInput;
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Optional;
 import com.biopatternsg.domain.model.PathwayEvent;
@@ -39,13 +40,11 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -165,12 +164,52 @@ class InferPathwaysUseCaseDynamicTest {
     }
 
     @Test
+    @DisplayName("Should respect maxPathwaysLimit when running with many objects and no closing objects")
+    void shouldRespectMaxPathwaysLimitWithoutClosingObjects() {
+        InferPathwaysUseCase cappedUseCase = new InferPathwaysUseCase(
+                prologInferencePort, pathwayRepository, knowledgeBaseRepository, inferenceRepository,
+                "output", 4, 30, 5, 60);
+
+        List<KbObject> objects = new ArrayList<>();
+        List<PathwayEvent> events = new ArrayList<>();
+
+        objects.add(KbObject.builder().name("LIG1").roles(List.of("ligand", "protein")).build());
+        for (int i = 1; i <= 15; i++) {
+            String pName = "PROT_" + i;
+            objects.add(KbObject.builder().name(pName).roles(List.of("protein")).build());
+            events.add(new PathwayEvent("LIG1", "association", pName));
+            for (int j = 1; j <= 15; j++) {
+                if (i != j) {
+                    events.add(new PathwayEvent(pName, "association", "PROT_" + j));
+                    events.add(new PathwayEvent(pName, "inhibit", "PROT_" + j));
+                }
+            }
+        }
+
+        DynamicInferenceInput input = DynamicInferenceInput.builder()
+                .pipelineId("pipe-capped-test")
+                .user("test-user")
+                .objects(objects)
+                .events(events)
+                .closingObjects(List.of())
+                .summarizeKb(true)
+                .maxDepth(5)
+                .build();
+
+        DynamicExecutionResult result = cappedUseCase.runDynamicInference(input);
+
+        assertNotNull(result);
+        assertEquals(5, result.getGeneratedPathwaysCount());
+        assertEquals(5, result.getPathways().size());
+    }
+
+    @Test
     @DisplayName("Should throw IllegalArgumentException when pipelineId is blank")
     void shouldThrowWhenPipelineIdIsBlank() {
         assertThrows(IllegalArgumentException.class, () ->
-                useCase.runPipelineInference("", "user", List.of(), List.of(), false, 10));
+                useCase.runPipelineInference("", "user", List.of(), List.of(), false, 5));
         assertThrows(IllegalArgumentException.class, () ->
-                useCase.runPipelineInference(null, "user", List.of(), List.of(), false, 10));
+                useCase.runPipelineInference(null, "user", List.of(), List.of(), false, 5));
     }
 
     @Test
@@ -185,7 +224,7 @@ class InferPathwaysUseCaseDynamicTest {
                 .thenReturn(Collections.emptyList());
 
         assertThrows(IllegalArgumentException.class, () ->
-                useCase.runPipelineInference("empty-pipe", "user", List.of(), List.of(), false, 10));
+                useCase.runPipelineInference("empty-pipe", "user", List.of(), List.of(), false, 5));
     }
 
     @Test
@@ -195,18 +234,13 @@ class InferPathwaysUseCaseDynamicTest {
         when(inferenceRepository.findByPipelineId(pipeId)).thenReturn(Optional.empty());
 
         assertThrows(IllegalArgumentException.class, () ->
-                useCase.runPipelineInference(pipeId, "user", List.of(), List.of(), false, 10));
+                useCase.runPipelineInference(pipeId, "user", List.of(), List.of(), false, 5));
     }
 
     @Test
     @DisplayName("Should run pipeline inference, persist pathways and graph to repositories and return result")
     void shouldRunPipelineInferenceAndPersistToRepositories() {
         String pipeId = "prod-pipe-01";
-        List<KbObject> objects = List.of(
-                KbObject.builder().name("IFNA1").roles(List.of("ligand")).build(),
-                KbObject.builder().name("IRF7").roles(List.of("protein")).build(),
-                KbObject.builder().name("IRF3").roles(List.of("transcription_factor")).build()
-        );
         List<PathwayEvent> events = List.of(
                 new PathwayEvent("IFNA1", "association", "IRF7"),
                 new PathwayEvent("IRF7", "bind", "IRF3")
@@ -276,6 +310,7 @@ class InferPathwaysUseCaseDynamicTest {
         assertEquals(0L, useCase.countPathways(""));
         assertEquals(0L, useCase.deletePathways(""));
     }
+
     @Test
     @DisplayName("Should run pipeline inference loading objects with roles from inferences collection")
     void shouldRunPipelineInferenceLoadingObjectsFromInferencesCollection() {
@@ -324,6 +359,7 @@ class InferPathwaysUseCaseDynamicTest {
         verify(pathwayRepository).savePathwaysBatch(result.getPathways());
         verify(pathwayRepository).savePathwayGraph(result.getGraph());
     }
+
     @Test
     @DisplayName("Should pass restrictionLevel from inference and aligned objects to KnowledgeBaseRepository")
     void shouldPassRestrictionLevelAndAlignedObjectsToKnowledgeBaseRepository() {

@@ -23,6 +23,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,15 +38,26 @@ public class ManageInferenceUseCase implements InferenceUseCase {
 
     @Override
     public Inference createInference(Inference inference, String userId) {
-        log.info("Saving inference configuration for pipeline: {} with restrictionLevel: {}",
-                inference.getPipelineId(), inference.getRestrictionLevel());
+        boolean summarizeKb = inference.getSummarizeKb() != null ? inference.getSummarizeKb() : true;
+        int maxDepth = (inference.getMaxDepth() != null && inference.getMaxDepth() > 0) ? inference.getMaxDepth() : 5;
+        inference.setSummarizeKb(summarizeKb);
+        inference.setMaxDepth(maxDepth);
+
+        log.info("Saving inference configuration for pipeline: {} with restrictionLevel: {}, summarizeKb: {}, maxDepth: {}",
+                inference.getPipelineId(), inference.getRestrictionLevel(), summarizeKb, maxDepth);
         Inference saved = inferenceRepository.save(inference);
+
+        Map<String, String> metrics = new LinkedHashMap<>();
+        metrics.put("Restriction Level", inference.getRestrictionLevel());
+        metrics.put("Summarize KB", String.valueOf(summarizeKb));
+        metrics.put("Max Depth", String.valueOf(maxDepth));
+
         configAndControlRepository.updateStep(
                 inference.getPipelineId(),
                 "CONFIGURE_INFERENCES",
                 "COMPLETED",
                 userId,
-                Map.of("Restriction Level", inference.getRestrictionLevel())
+                metrics
         );
         return saved;
     }
