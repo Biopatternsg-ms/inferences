@@ -848,7 +848,8 @@ run :-
             Map<String, String> primaryRoleMap = new LinkedHashMap<>();
             StringBuilder objectsPl = new StringBuilder();
             objectsPl.append(":- style_check(-discontiguous).\n");
-            objectsPl.append(":- discontiguous protein/1, enzyme/1, ligand/1, receptor/1, transcription_factor/1, restricted_obj/1, closing_obj/1.\n\n");
+            objectsPl.append(":- dynamic protein/1, enzyme/1, ligand/1, receptor/1, transcription_factor/1, adaptor_protein/1, disease/1, restricted_obj/1, closing_obj/1.\n");
+            objectsPl.append(":- discontiguous protein/1, enzyme/1, ligand/1, receptor/1, transcription_factor/1, adaptor_protein/1, disease/1, restricted_obj/1, closing_obj/1.\n\n");
 
             Set<String> allObjectNames = new LinkedHashSet<>();
             int roleFactsCount = 0;
@@ -863,7 +864,7 @@ run :-
 
                     List<String> roles = obj.getRoles() != null ? obj.getRoles() : List.of();
                     for (String r : roles) {
-                        String cleanR = r.toLowerCase().trim();
+                        String cleanR = r.toLowerCase().trim().replace("-", "_").replace(" ", "_");
                         if (cleanR.equals("ligand")) {
                             objectsPl.append("ligand('").append(escapedName).append("').\n");
                             roleFactsCount++;
@@ -875,6 +876,18 @@ run :-
                             roleFactsCount++;
                         } else if (cleanR.equals("transcription_factor") || cleanR.equals("tf")) {
                             objectsPl.append("transcription_factor('").append(escapedName).append("').\n");
+                            roleFactsCount++;
+                        } else if (cleanR.equals("adaptor_protein")) {
+                            objectsPl.append("adaptor_protein('").append(escapedName).append("').\n");
+                            roleFactsCount++;
+                        } else if (cleanR.equals("disease")) {
+                            objectsPl.append("disease('").append(escapedName).append("').\n");
+                            roleFactsCount++;
+                        } else if (cleanR.equals("gene")) {
+                            objectsPl.append("gene('").append(escapedName).append("').\n");
+                            roleFactsCount++;
+                        } else if (cleanR.equals("variant")) {
+                            objectsPl.append("variant('").append(escapedName).append("').\n");
                             roleFactsCount++;
                         }
                     }
@@ -969,6 +982,13 @@ run :-
             Path evEspFile = ramDir.resolve("evento_especial.json");
             Path finEspFile = ramDir.resolve("final_especial.json");
 
+            String startFirstRolesExpr = buildStartRoleDisjunction(input.getStartFirstRoles(), "A", "ligand");
+            String startSecondRolesExpr = buildStartRoleDisjunction(input.getStartSecondRoles(), "B", "protein");
+            String intermediateFirstRolesExpr = buildStartRoleDisjunction(input.getIntermediateFirstRoles(), "A", "protein");
+            String intermediateSecondRolesExpr = buildStartRoleDisjunction(input.getIntermediateSecondRoles(), "B", "protein");
+            String endFirstRolesExpr = buildStartRoleDisjunction(input.getEndFirstRoles(), "A", "protein");
+            String endSecondRolesExpr = buildStartRoleDisjunction(input.getEndSecondRoles(), "B", "protein");
+
             String runnerTemplate = """
 :- style_check(-discontiguous).
 :- use_module(library(http/json)).
@@ -976,8 +996,8 @@ run :-
 :- consult('{kb_file}').
 
 restrictions_start_ligand(A, B) :-
-    ligand(A),
-    protein(B),
+    {start_first_roles},
+    {start_second_roles},
     A \\= B.
 
 inicio_rule(A, E, B) :-
@@ -992,8 +1012,8 @@ final_rule(A, E, B) :-
 {closing_filter}    member(E, [association, negative_correlation, inhibit, inhibition, positive_correlation, bind, cause, stimulate, stimulation, prevent, prevention]),
     restricted_obj(A),
     restricted_obj(B),
-    protein(A),
-    protein(B),
+    {end_first_roles},
+    {end_second_roles},
     A \\= B.
 
 intermedios_rule(A, E, B) :-
@@ -1001,8 +1021,8 @@ intermedios_rule(A, E, B) :-
     member(E, [association]),
     restricted_obj(A),
     restricted_obj(B),
-    protein(A),
-    protein(B),
+    {intermediate_first_roles},
+    {intermediate_second_roles},
     A \\= B.
 
 evento_especial_rule(A, E, B) :-
@@ -1045,6 +1065,12 @@ run :-
             String runnerContent = runnerTemplate
                     .replace("{obj_file}", normalizePath(objFile.toString()))
                     .replace("{kb_file}", normalizePath(kbFile.toString()))
+                    .replace("{start_first_roles}", startFirstRolesExpr)
+                    .replace("{start_second_roles}", startSecondRolesExpr)
+                    .replace("{intermediate_first_roles}", intermediateFirstRolesExpr)
+                    .replace("{intermediate_second_roles}", intermediateSecondRolesExpr)
+                    .replace("{end_first_roles}", endFirstRolesExpr)
+                    .replace("{end_second_roles}", endSecondRolesExpr)
                     .replace("{closing_filter}", closingFilter)
                     .replace("{inicios_file}", normalizePath(iniciosFile.toString()))
                     .replace("{finales_file}", normalizePath(finalesFile.toString()))
@@ -1374,9 +1400,31 @@ run :-
                 ? closingObjects
                 : configuredClosing;
 
-        log.info("[STEP 1/7 - KB LOAD] [pipelineId={}] Starting production inference: user={}, restrictionLevel={}, objects={}, events={}, closingObjects={}, summarizeKb={}, maxDepth={}",
+        List<String> effectiveStartFirstRoles = inference.getStartFirstRoles() != null && !inference.getStartFirstRoles().isEmpty()
+                ? inference.getStartFirstRoles()
+                : List.of("ligand");
+        List<String> effectiveStartSecondRoles = inference.getStartSecondRoles() != null && !inference.getStartSecondRoles().isEmpty()
+                ? inference.getStartSecondRoles()
+                : List.of("protein");
+        List<String> effectiveIntermediateFirstRoles = inference.getIntermediateFirstRoles() != null && !inference.getIntermediateFirstRoles().isEmpty()
+                ? inference.getIntermediateFirstRoles()
+                : List.of("protein");
+        List<String> effectiveIntermediateSecondRoles = inference.getIntermediateSecondRoles() != null && !inference.getIntermediateSecondRoles().isEmpty()
+                ? inference.getIntermediateSecondRoles()
+                : List.of("protein");
+        List<String> effectiveEndFirstRoles = inference.getEndFirstRoles() != null && !inference.getEndFirstRoles().isEmpty()
+                ? inference.getEndFirstRoles()
+                : List.of("protein");
+        List<String> effectiveEndSecondRoles = inference.getEndSecondRoles() != null && !inference.getEndSecondRoles().isEmpty()
+                ? inference.getEndSecondRoles()
+                : List.of("protein");
+
+        log.info("[STEP 1/7 - KB LOAD] [pipelineId={}] Starting production inference: user={}, restrictionLevel={}, objects={}, events={}, closingObjects={}, summarizeKb={}, maxDepth={}, startRoles=[{}, {}], intermediateRoles=[{}, {}], endRoles=[{}, {}]",
                 pipelineId, user, restrictionLevel, objects.size(), events.size(),
-                effectiveClosing.size(), effectiveSummarizeKb, effectiveMaxDepth);
+                effectiveClosing.size(), effectiveSummarizeKb, effectiveMaxDepth,
+                effectiveStartFirstRoles, effectiveStartSecondRoles,
+                effectiveIntermediateFirstRoles, effectiveIntermediateSecondRoles,
+                effectiveEndFirstRoles, effectiveEndSecondRoles);
 
         // 1. Borrar inmediatamente cualquier información de inferencia previa del pipeline (vías y grafo)
         long deletedPrevious = pathwayRepository.deleteByPipelineId(pipelineId);
@@ -1392,6 +1440,12 @@ run :-
                 .closingObjects(effectiveClosing)
                 .summarizeKb(effectiveSummarizeKb)
                 .maxDepth(effectiveMaxDepth)
+                .startFirstRoles(effectiveStartFirstRoles)
+                .startSecondRoles(effectiveStartSecondRoles)
+                .intermediateFirstRoles(effectiveIntermediateFirstRoles)
+                .intermediateSecondRoles(effectiveIntermediateSecondRoles)
+                .endFirstRoles(effectiveEndFirstRoles)
+                .endSecondRoles(effectiveEndSecondRoles)
                 .build();
 
         DynamicExecutionResult result = runDynamicInference(input);
@@ -1469,7 +1523,53 @@ run :-
         if (lower.contains("ligand")) return "ligand";
         if (lower.contains("receptor")) return "receptor";
         if (lower.contains("transcription_factor") || lower.contains("tf")) return "transcription_factor";
+        if (lower.contains("adaptor_protein")) return "adaptor_protein";
+        if (lower.contains("disease")) return "disease";
         return "protein";
+    }
+
+    public static String toPrologRolePredicate(String role) {
+        if (role == null || role.isBlank()) {
+            return null;
+        }
+        String clean = role.toLowerCase().trim().replace("-", "_").replace(" ", "_");
+        return switch (clean) {
+            case "ligand" -> "ligand";
+            case "receptor" -> "receptor";
+            case "enzyme" -> "enzyme";
+            case "transcription_factor", "tf" -> "transcription_factor";
+            case "adaptor_protein" -> "adaptor_protein";
+            case "disease" -> "disease";
+            case "protein" -> "protein";
+            default -> null;
+        };
+    }
+
+    public static String buildStartRoleDisjunction(List<String> roles, String varName, String defaultPredicate) {
+        List<String> predicates = new ArrayList<>();
+        if (roles != null) {
+            for (String r : roles) {
+                String pred = toPrologRolePredicate(r);
+                if (pred != null && !predicates.contains(pred)) {
+                    predicates.add(pred);
+                }
+            }
+        }
+        if (predicates.isEmpty()) {
+            predicates.add(defaultPredicate);
+        }
+        if (predicates.size() == 1) {
+            return predicates.get(0) + "(" + varName + ")";
+        }
+        StringBuilder sb = new StringBuilder("(");
+        for (int i = 0; i < predicates.size(); i++) {
+            if (i > 0) {
+                sb.append(" ; ");
+            }
+            sb.append(predicates.get(i)).append("(").append(varName).append(")");
+        }
+        sb.append(")");
+        return sb.toString();
     }
 
     public static List<PathwayEvent> summarizeKnowledgeBase(List<PathwayEvent> events) {

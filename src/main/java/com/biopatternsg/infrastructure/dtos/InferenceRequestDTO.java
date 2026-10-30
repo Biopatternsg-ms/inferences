@@ -22,6 +22,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.List;
+
 @Getter
 @Setter
 @Builder
@@ -37,4 +39,16 @@ public class InferenceRequestDTO {
     private Boolean summarizeKb;
 
     private Integer maxDepth;
+
+    private List<String> startFirstRoles;
+
+    private List<String> startSecondRoles;
+
+    private List<String> intermediateFirstRoles;
+
+    private List<String> intermediateSecondRoles;
+
+    private List<String> endFirstRoles;
+
+    private List<String> endSecondRoles;
 }
