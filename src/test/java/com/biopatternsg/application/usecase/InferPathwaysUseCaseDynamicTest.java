@@ -422,4 +422,63 @@ class InferPathwaysUseCaseDynamicTest {
         assertEquals("Kaposi's \"receptor\"", pathway.getEndObject());
         assertEquals(3, pathway.getObjects().size());
     }
+
+    @Test
+    @DisplayName("Should build Prolog role disjunctions for start rules")
+    void shouldBuildStartRoleDisjunctionsCorrectly() {
+        assertEquals("ligand(A)", InferPathwaysUseCase.buildStartRoleDisjunction(null, "A", "ligand"));
+        assertEquals("protein(B)", InferPathwaysUseCase.buildStartRoleDisjunction(List.of(), "B", "protein"));
+        assertEquals("ligand(A)", InferPathwaysUseCase.buildStartRoleDisjunction(List.of("LIGAND"), "A", "ligand"));
+        assertEquals(
+                "(ligand(A) ; protein(A) ; transcription_factor(A))",
+                InferPathwaysUseCase.buildStartRoleDisjunction(List.of("LIGAND", "PROTEIN", "TRANSCRIPTION_FACTOR"), "A", "ligand")
+        );
+        assertEquals(
+                "(receptor(B) ; enzyme(B))",
+                InferPathwaysUseCase.buildStartRoleDisjunction(List.of("Receptor", "Enzyme", "RECEPTOR"), "B", "protein")
+        );
+    }
+
+    @Test
+    @DisplayName("Should infer pathways using configurable startFirstRoles and startSecondRoles")
+    void shouldInferPathwaysWithCustomStartRoles() {
+        List<KbObject> objects = List.of(
+                KbObject.builder().name("TF_START").roles(List.of("transcription_factor")).build(),
+                KbObject.builder().name("REC_MID").roles(List.of("receptor")).build(),
+                KbObject.builder().name("ENZ_END").roles(List.of("enzyme")).build()
+        );
+
+        List<PathwayEvent> events = List.of(
+                PathwayEvent.builder().id("ev-custom-1").first("TF_START").relation("association").second("REC_MID").build(),
+                PathwayEvent.builder().id("ev-custom-2").first("REC_MID").relation("bind").second("ENZ_END").build()
+        );
+
+        // With default startFirstRoles=["ligand"], TF_START cannot start a pathway (0 pathways)
+        DynamicInferenceInput defaultInput = DynamicInferenceInput.builder()
+                .pipelineId("pipe-default-roles")
+                .user("researcher")
+                .objects(objects)
+                .events(events)
+                .summarizeKb(false)
+                .maxDepth(5)
+                .build();
+        DynamicExecutionResult defaultResult = useCase.runDynamicInference(defaultInput);
+        assertEquals(0, defaultResult.getGeneratedPathwaysCount());
+
+        // With configurable startFirstRoles=["ligand", "transcription_factor"] and startSecondRoles=["receptor"], TF_START -> REC_MID -> ENZ_END is inferred
+        DynamicInferenceInput customInput = DynamicInferenceInput.builder()
+                .pipelineId("pipe-custom-roles")
+                .user("researcher")
+                .objects(objects)
+                .events(events)
+                .summarizeKb(false)
+                .maxDepth(5)
+                .startFirstRoles(List.of("LIGAND", "TRANSCRIPTION_FACTOR"))
+                .startSecondRoles(List.of("RECEPTOR"))
+                .build();
+        DynamicExecutionResult customResult = useCase.runDynamicInference(customInput);
+        assertEquals(1, customResult.getGeneratedPathwaysCount());
+        assertEquals("TF_START", customResult.getPathways().get(0).getStartObject());
+        assertEquals("ENZ_END", customResult.getPathways().get(0).getEndObject());
+    }
 }

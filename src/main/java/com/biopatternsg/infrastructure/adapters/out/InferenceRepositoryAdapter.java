@@ -48,13 +48,43 @@ public class InferenceRepositoryAdapter implements InferenceRepository, PanacheM
             if (inference.getMaxDepth() != null && inference.getMaxDepth() > 0) {
                 existing.setMaxDepth(inference.getMaxDepth());
             } else if (existing.getMaxDepth() == null || existing.getMaxDepth() <= 0) {
-                existing.setMaxDepth(5);
+                existing.setMaxDepth(10);
             }
             if (inference.getRoles() != null) {
                 existing.setRoles(inference.getRoles());
             }
             if (inference.getClosingObjects() != null) {
                 existing.setClosingObjects(inference.getClosingObjects());
+            }
+            if (inference.getStartFirstRoles() != null && !inference.getStartFirstRoles().isEmpty()) {
+                existing.setStartFirstRoles(inference.getStartFirstRoles());
+            } else if (existing.getStartFirstRoles() == null || existing.getStartFirstRoles().isEmpty()) {
+                existing.setStartFirstRoles(List.of("LIGAND"));
+            }
+            if (inference.getStartSecondRoles() != null && !inference.getStartSecondRoles().isEmpty()) {
+                existing.setStartSecondRoles(inference.getStartSecondRoles());
+            } else if (existing.getStartSecondRoles() == null || existing.getStartSecondRoles().isEmpty()) {
+                existing.setStartSecondRoles(List.of("PROTEIN"));
+            }
+            if (inference.getIntermediateFirstRoles() != null && !inference.getIntermediateFirstRoles().isEmpty()) {
+                existing.setIntermediateFirstRoles(inference.getIntermediateFirstRoles());
+            } else if (existing.getIntermediateFirstRoles() == null || existing.getIntermediateFirstRoles().isEmpty()) {
+                existing.setIntermediateFirstRoles(List.of("PROTEIN"));
+            }
+            if (inference.getIntermediateSecondRoles() != null && !inference.getIntermediateSecondRoles().isEmpty()) {
+                existing.setIntermediateSecondRoles(inference.getIntermediateSecondRoles());
+            } else if (existing.getIntermediateSecondRoles() == null || existing.getIntermediateSecondRoles().isEmpty()) {
+                existing.setIntermediateSecondRoles(List.of("PROTEIN"));
+            }
+            if (inference.getEndFirstRoles() != null && !inference.getEndFirstRoles().isEmpty()) {
+                existing.setEndFirstRoles(inference.getEndFirstRoles());
+            } else if (existing.getEndFirstRoles() == null || existing.getEndFirstRoles().isEmpty()) {
+                existing.setEndFirstRoles(List.of("PROTEIN"));
+            }
+            if (inference.getEndSecondRoles() != null && !inference.getEndSecondRoles().isEmpty()) {
+                existing.setEndSecondRoles(inference.getEndSecondRoles());
+            } else if (existing.getEndSecondRoles() == null || existing.getEndSecondRoles().isEmpty()) {
+                existing.setEndSecondRoles(List.of("PROTEIN"));
             }
             update(existing);
             return inferenceMapper.toModel(existing);

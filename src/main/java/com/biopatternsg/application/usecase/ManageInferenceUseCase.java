@@ -39,18 +39,50 @@ public class ManageInferenceUseCase implements InferenceUseCase {
     @Override
     public Inference createInference(Inference inference, String userId) {
         boolean summarizeKb = inference.getSummarizeKb() == null || inference.getSummarizeKb();
-        int maxDepth = inference.getMaxDepth() != null && inference.getMaxDepth() > 0 ? inference.getMaxDepth() : 5;
+        int maxDepth = inference.getMaxDepth() != null && inference.getMaxDepth() > 0 ? inference.getMaxDepth() : 10;
+        List<String> startFirstRoles = inference.getStartFirstRoles() != null && !inference.getStartFirstRoles().isEmpty()
+                ? inference.getStartFirstRoles()
+                : List.of("LIGAND");
+        List<String> startSecondRoles = inference.getStartSecondRoles() != null && !inference.getStartSecondRoles().isEmpty()
+                ? inference.getStartSecondRoles()
+                : List.of("PROTEIN");
+        List<String> intermediateFirstRoles = inference.getIntermediateFirstRoles() != null && !inference.getIntermediateFirstRoles().isEmpty()
+                ? inference.getIntermediateFirstRoles()
+                : List.of("PROTEIN");
+        List<String> intermediateSecondRoles = inference.getIntermediateSecondRoles() != null && !inference.getIntermediateSecondRoles().isEmpty()
+                ? inference.getIntermediateSecondRoles()
+                : List.of("PROTEIN");
+        List<String> endFirstRoles = inference.getEndFirstRoles() != null && !inference.getEndFirstRoles().isEmpty()
+                ? inference.getEndFirstRoles()
+                : List.of("PROTEIN");
+        List<String> endSecondRoles = inference.getEndSecondRoles() != null && !inference.getEndSecondRoles().isEmpty()
+                ? inference.getEndSecondRoles()
+                : List.of("PROTEIN");
+
         inference.setSummarizeKb(summarizeKb);
         inference.setMaxDepth(maxDepth);
+        inference.setStartFirstRoles(startFirstRoles);
+        inference.setStartSecondRoles(startSecondRoles);
+        inference.setIntermediateFirstRoles(intermediateFirstRoles);
+        inference.setIntermediateSecondRoles(intermediateSecondRoles);
+        inference.setEndFirstRoles(endFirstRoles);
+        inference.setEndSecondRoles(endSecondRoles);
 
-        log.info("Saving inference configuration for pipeline: {} with restrictionLevel: {}, summarizeKb: {}, maxDepth: {}",
-                inference.getPipelineId(), inference.getRestrictionLevel(), summarizeKb, maxDepth);
+        log.info("Saving inference configuration for pipeline: {} with restrictionLevel: {}, summarizeKb: {}, maxDepth: {}, startRoles=[{}, {}], intermediateRoles=[{}, {}], endRoles=[{}, {}]",
+                inference.getPipelineId(), inference.getRestrictionLevel(), summarizeKb, maxDepth,
+                startFirstRoles, startSecondRoles, intermediateFirstRoles, intermediateSecondRoles, endFirstRoles, endSecondRoles);
         Inference saved = inferenceRepository.save(inference);
 
         Map<String, String> metrics = new LinkedHashMap<>();
         metrics.put("Restriction Level", inference.getRestrictionLevel());
         metrics.put("Summarize KB", String.valueOf(summarizeKb));
         metrics.put("Max Depth", String.valueOf(maxDepth));
+        metrics.put("Start First Roles", String.join(", ", startFirstRoles));
+        metrics.put("Start Second Roles", String.join(", ", startSecondRoles));
+        metrics.put("Intermediate First Roles", String.join(", ", intermediateFirstRoles));
+        metrics.put("Intermediate Second Roles", String.join(", ", intermediateSecondRoles));
+        metrics.put("End First Roles", String.join(", ", endFirstRoles));
+        metrics.put("End Second Roles", String.join(", ", endSecondRoles));
 
         configAndControlRepository.updateStep(
                 inference.getPipelineId(),

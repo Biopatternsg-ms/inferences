@@ -53,5 +53,23 @@ public class DynamicInferenceInput {
     private boolean summarizeKb = false;
 
     @Builder.Default
-    private int maxDepth = 5;
+    private int maxDepth = 10;
+
+    @Builder.Default
+    private List<String> startFirstRoles = new ArrayList<>(List.of("ligand"));
+
+    @Builder.Default
+    private List<String> startSecondRoles = new ArrayList<>(List.of("protein"));
+
+    @Builder.Default
+    private List<String> intermediateFirstRoles = new ArrayList<>(List.of("protein"));
+
+    @Builder.Default
+    private List<String> intermediateSecondRoles = new ArrayList<>(List.of("protein"));
+
+    @Builder.Default
+    private List<String> endFirstRoles = new ArrayList<>(List.of("protein"));
+
+    @Builder.Default
+    private List<String> endSecondRoles = new ArrayList<>(List.of("protein"));
 }

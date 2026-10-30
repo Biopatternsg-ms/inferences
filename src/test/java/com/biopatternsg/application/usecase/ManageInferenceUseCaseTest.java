@@ -79,13 +79,25 @@ class ManageInferenceUseCaseTest {
         assertEquals("pipeline-123", created.getPipelineId());
         assertEquals("RESTRICTED", created.getRestrictionLevel());
         assertEquals(Boolean.TRUE, input.getSummarizeKb());
-        assertEquals(5, input.getMaxDepth());
+        assertEquals(10, input.getMaxDepth());
+        assertEquals(List.of("LIGAND"), input.getStartFirstRoles());
+        assertEquals(List.of("PROTEIN"), input.getStartSecondRoles());
+        assertEquals(List.of("PROTEIN"), input.getIntermediateFirstRoles());
+        assertEquals(List.of("PROTEIN"), input.getIntermediateSecondRoles());
+        assertEquals(List.of("PROTEIN"), input.getEndFirstRoles());
+        assertEquals(List.of("PROTEIN"), input.getEndSecondRoles());
         verify(inferenceRepository).save(any(Inference.class));
 
         Map<String, String> expectedMetrics = new LinkedHashMap<>();
         expectedMetrics.put("Restriction Level", "RESTRICTED");
         expectedMetrics.put("Summarize KB", "true");
-        expectedMetrics.put("Max Depth", "5");
+        expectedMetrics.put("Max Depth", "10");
+        expectedMetrics.put("Start First Roles", "LIGAND");
+        expectedMetrics.put("Start Second Roles", "PROTEIN");
+        expectedMetrics.put("Intermediate First Roles", "PROTEIN");
+        expectedMetrics.put("Intermediate Second Roles", "PROTEIN");
+        expectedMetrics.put("End First Roles", "PROTEIN");
+        expectedMetrics.put("End Second Roles", "PROTEIN");
 
         verify(configAndControlRepository).updateStep(
                 "pipeline-123",

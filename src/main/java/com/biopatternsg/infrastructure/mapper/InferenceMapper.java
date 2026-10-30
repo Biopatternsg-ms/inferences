@@ -22,8 +22,17 @@ import com.biopatternsg.infrastructure.mongo.InferenceCollection;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.bson.types.ObjectId;
 
+import java.util.List;
+
 @ApplicationScoped
 public class InferenceMapper {
+
+    private static final List<String> DEFAULT_START_FIRST_ROLES = List.of("LIGAND");
+    private static final List<String> DEFAULT_START_SECOND_ROLES = List.of("PROTEIN");
+    private static final List<String> DEFAULT_INTERMEDIATE_FIRST_ROLES = List.of("PROTEIN");
+    private static final List<String> DEFAULT_INTERMEDIATE_SECOND_ROLES = List.of("PROTEIN");
+    private static final List<String> DEFAULT_END_FIRST_ROLES = List.of("PROTEIN");
+    private static final List<String> DEFAULT_END_SECOND_ROLES = List.of("PROTEIN");
 
     public Inference toModel(InferenceRequestDTO dto) {
         if (dto == null) {
@@ -33,7 +42,13 @@ public class InferenceMapper {
                 .pipelineId(dto.getPipelineId())
                 .restrictionLevel(dto.getRestrictionLevel())
                 .summarizeKb(dto.getSummarizeKb() != null ? dto.getSummarizeKb() : Boolean.TRUE)
-                .maxDepth(dto.getMaxDepth() != null && dto.getMaxDepth() > 0 ? dto.getMaxDepth() : 5)
+                .maxDepth(dto.getMaxDepth() != null && dto.getMaxDepth() > 0 ? dto.getMaxDepth() : 10)
+                .startFirstRoles(resolveRolesOrDefault(dto.getStartFirstRoles(), DEFAULT_START_FIRST_ROLES))
+                .startSecondRoles(resolveRolesOrDefault(dto.getStartSecondRoles(), DEFAULT_START_SECOND_ROLES))
+                .intermediateFirstRoles(resolveRolesOrDefault(dto.getIntermediateFirstRoles(), DEFAULT_INTERMEDIATE_FIRST_ROLES))
+                .intermediateSecondRoles(resolveRolesOrDefault(dto.getIntermediateSecondRoles(), DEFAULT_INTERMEDIATE_SECOND_ROLES))
+                .endFirstRoles(resolveRolesOrDefault(dto.getEndFirstRoles(), DEFAULT_END_FIRST_ROLES))
+                .endSecondRoles(resolveRolesOrDefault(dto.getEndSecondRoles(), DEFAULT_END_SECOND_ROLES))
                 .build();
     }
 
@@ -46,9 +61,15 @@ public class InferenceMapper {
                 .pipelineId(model.getPipelineId())
                 .restrictionLevel(model.getRestrictionLevel())
                 .summarizeKb(model.getSummarizeKb() != null ? model.getSummarizeKb() : Boolean.TRUE)
-                .maxDepth(model.getMaxDepth() != null && model.getMaxDepth() > 0 ? model.getMaxDepth() : 5)
+                .maxDepth(model.getMaxDepth() != null && model.getMaxDepth() > 0 ? model.getMaxDepth() : 10)
                 .roles(model.getRoles())
                 .closingObjects(model.getClosingObjects())
+                .startFirstRoles(resolveRolesOrDefault(model.getStartFirstRoles(), DEFAULT_START_FIRST_ROLES))
+                .startSecondRoles(resolveRolesOrDefault(model.getStartSecondRoles(), DEFAULT_START_SECOND_ROLES))
+                .intermediateFirstRoles(resolveRolesOrDefault(model.getIntermediateFirstRoles(), DEFAULT_INTERMEDIATE_FIRST_ROLES))
+                .intermediateSecondRoles(resolveRolesOrDefault(model.getIntermediateSecondRoles(), DEFAULT_INTERMEDIATE_SECOND_ROLES))
+                .endFirstRoles(resolveRolesOrDefault(model.getEndFirstRoles(), DEFAULT_END_FIRST_ROLES))
+                .endSecondRoles(resolveRolesOrDefault(model.getEndSecondRoles(), DEFAULT_END_SECOND_ROLES))
                 .build();
     }
 
@@ -63,9 +84,15 @@ public class InferenceMapper {
         entity.setPipelineId(model.getPipelineId());
         entity.setRestrictionLevel(model.getRestrictionLevel());
         entity.setSummarizeKb(model.getSummarizeKb() != null ? model.getSummarizeKb() : Boolean.TRUE);
-        entity.setMaxDepth(model.getMaxDepth() != null && model.getMaxDepth() > 0 ? model.getMaxDepth() : 5);
+        entity.setMaxDepth(model.getMaxDepth() != null && model.getMaxDepth() > 0 ? model.getMaxDepth() : 10);
         entity.setRoles(model.getRoles());
         entity.setClosingObjects(model.getClosingObjects());
+        entity.setStartFirstRoles(resolveRolesOrDefault(model.getStartFirstRoles(), DEFAULT_START_FIRST_ROLES));
+        entity.setStartSecondRoles(resolveRolesOrDefault(model.getStartSecondRoles(), DEFAULT_START_SECOND_ROLES));
+        entity.setIntermediateFirstRoles(resolveRolesOrDefault(model.getIntermediateFirstRoles(), DEFAULT_INTERMEDIATE_FIRST_ROLES));
+        entity.setIntermediateSecondRoles(resolveRolesOrDefault(model.getIntermediateSecondRoles(), DEFAULT_INTERMEDIATE_SECOND_ROLES));
+        entity.setEndFirstRoles(resolveRolesOrDefault(model.getEndFirstRoles(), DEFAULT_END_FIRST_ROLES));
+        entity.setEndSecondRoles(resolveRolesOrDefault(model.getEndSecondRoles(), DEFAULT_END_SECOND_ROLES));
         return entity;
     }
 
@@ -78,9 +105,27 @@ public class InferenceMapper {
                 .pipelineId(entity.getPipelineId())
                 .restrictionLevel(entity.getRestrictionLevel())
                 .summarizeKb(entity.getSummarizeKb() != null ? entity.getSummarizeKb() : Boolean.TRUE)
-                .maxDepth(entity.getMaxDepth() != null && entity.getMaxDepth() > 0 ? entity.getMaxDepth() : 5)
+                .maxDepth(entity.getMaxDepth() != null && entity.getMaxDepth() > 0 ? entity.getMaxDepth() : 10)
                 .roles(entity.getRoles())
                 .closingObjects(entity.getClosingObjects())
+                .startFirstRoles(resolveRolesOrDefault(entity.getStartFirstRoles(), DEFAULT_START_FIRST_ROLES))
+                .startSecondRoles(resolveRolesOrDefault(entity.getStartSecondRoles(), DEFAULT_START_SECOND_ROLES))
+                .intermediateFirstRoles(resolveRolesOrDefault(entity.getIntermediateFirstRoles(), DEFAULT_INTERMEDIATE_FIRST_ROLES))
+                .intermediateSecondRoles(resolveRolesOrDefault(entity.getIntermediateSecondRoles(), DEFAULT_INTERMEDIATE_SECOND_ROLES))
+                .endFirstRoles(resolveRolesOrDefault(entity.getEndFirstRoles(), DEFAULT_END_FIRST_ROLES))
+                .endSecondRoles(resolveRolesOrDefault(entity.getEndSecondRoles(), DEFAULT_END_SECOND_ROLES))
                 .build();
+    }
+
+    private static List<String> resolveRolesOrDefault(List<String> roles, List<String> defaultRoles) {
+        if (roles == null || roles.isEmpty()) {
+            return defaultRoles;
+        }
+        List<String> sanitized = roles.stream()
+                .filter(r -> r != null && !r.isBlank())
+                .map(r -> r.trim().toUpperCase())
+                .distinct()
+                .toList();
+        return sanitized.isEmpty() ? defaultRoles : sanitized;
     }
 }

@@ -35,4 +35,10 @@ public class InferenceCollection extends PanacheMongoEntity {
     private Integer maxDepth;
     private Map<String, List<String>> roles;
     private List<String> closingObjects;
+    private List<String> startFirstRoles;
+    private List<String> startSecondRoles;
+    private List<String> intermediateFirstRoles;
+    private List<String> intermediateSecondRoles;
+    private List<String> endFirstRoles;
+    private List<String> endSecondRoles;
 }
