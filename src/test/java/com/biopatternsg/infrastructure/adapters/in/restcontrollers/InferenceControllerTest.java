@@ -16,10 +16,12 @@
 package com.biopatternsg.infrastructure.adapters.in.restcontrollers;
 
 import com.biopatternsg.domain.model.BiologicalPathway;
+import com.biopatternsg.domain.model.GraphEdge;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.PathwayGraph;
+import com.biopatternsg.domain.model.PathwayObject;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import java.util.Map;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
@@ -37,9 +39,7 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -167,6 +167,42 @@ class InferenceControllerTest {
         verify(pathwayRepository).deleteByPipelineId(pipeId);
         verify(pathwayRepository).savePathwaysBatch(anyList());
         verify(pathwayRepository).savePathwayGraph(any());
+    }
+
+    @Test
+    @DisplayName("GET /api/inferences/pathway-graphs/{pipelineId} should return 200 with mapped nodes and edges")
+    void testGetPathwayGraphByPipelineIdFound() {
+        String pipeId = "pipe-pathway-graphs-01";
+        PathwayGraph graph = PathwayGraph.builder()
+                .pipelineId(pipeId)
+                .user("test-user")
+                .totalPathways(25)
+                .executionTimeMs(30L)
+                .nodes(List.of(
+                        new PathwayObject("TLR4", "receptor"),
+                        new PathwayObject("IRF3", "transcription_factor")
+                ))
+                .edges(List.of(
+                        new GraphEdge("TLR4", "bind", "IRF3", 25L)
+                ))
+                .build();
+
+        when(pathwayRepository.findGraphByPipelineId(pipeId)).thenReturn(Optional.of(graph));
+
+        given()
+                .when().get("/api/inferences/pathway-graphs/" + pipeId)
+                .then()
+                .statusCode(200)
+                .body("pipelineId", equalTo(pipeId))
+                .body("totalPathways", equalTo(25))
+                .body("nodes", hasSize(2))
+                .body("nodes[0].name", equalTo("TLR4"))
+                .body("nodes[0].type", equalTo("Receptor"))
+                .body("edges", hasSize(1))
+                .body("edges[0].object1", equalTo("TLR4"))
+                .body("edges[0].interaction", equalTo("bind"))
+                .body("edges[0].object2", equalTo("IRF3"))
+                .body("edges[0].pathwayCount", equalTo(25));
     }
 
     @Test

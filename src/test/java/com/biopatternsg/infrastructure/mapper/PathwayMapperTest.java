@@ -178,4 +178,42 @@ class PathwayMapperTest {
         assertEquals(1, dto.getUniqueEdgesCount());
         assertEquals(120L, dto.getExecutionTimeMs());
     }
+
+    @Test
+    @DisplayName("Should map PathwayGraph to PathwayGraphResponseDTO with formatted types and link aliases")
+    void shouldMapPathwayGraphToResponseDTO() {
+        PathwayGraph graph = PathwayGraph.builder()
+                .pipelineId("p-graph-dto")
+                .user("user-02")
+                .totalPathways(42)
+                .executionTimeMs(85L)
+                .nodes(List.of(
+                        new PathwayObject("ABCG8", "gene"),
+                        new PathwayObject("IRF3", "transcription_factor")
+                ))
+                .edges(List.of(
+                        new GraphEdge("ABCG8", "positive_correlation", "IRF3", 12L)
+                ))
+                .build();
+
+        com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO dto = mapper.toGraphResponseDTO(graph);
+        assertNotNull(dto);
+        assertEquals("p-graph-dto", dto.getPipelineId());
+        assertEquals("user-02", dto.getUser());
+        assertEquals(42, dto.getTotalPathways());
+        assertEquals(85L, dto.getExecutionTimeMs());
+        assertEquals(2, dto.getNodes().size());
+        assertEquals("ABCG8", dto.getNodes().get(0).getName());
+        assertEquals("gene", dto.getNodes().get(0).getRole());
+        assertEquals("Gene", dto.getNodes().get(0).getType());
+        assertEquals("Transcription Factor", dto.getNodes().get(1).getType());
+        assertEquals(1, dto.getEdges().size());
+        assertEquals("ABCG8", dto.getEdges().get(0).getFirst());
+        assertEquals("ABCG8", dto.getEdges().get(0).getObject1());
+        assertEquals("positive_correlation", dto.getEdges().get(0).getRelation());
+        assertEquals("positive_correlation", dto.getEdges().get(0).getInteraction());
+        assertEquals("IRF3", dto.getEdges().get(0).getSecond());
+        assertEquals("IRF3", dto.getEdges().get(0).getObject2());
+        assertEquals(12L, dto.getEdges().get(0).getPathwayCount());
+    }
 }

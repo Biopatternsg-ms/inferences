@@ -259,4 +259,82 @@ public class PathwayMapper {
                 .executionTimeMs(result.getExecutionTimeMs())
                 .build();
     }
+
+    public com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO toGraphResponseDTO(PathwayGraph graph) {
+        if (graph == null) {
+            return null;
+        }
+        List<com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO> nodeDTOs = graph.getNodes() != null
+                ? graph.getNodes().stream().map(this::toNodeDTO).toList()
+                : new ArrayList<>();
+
+        List<com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO> edgeDTOs = graph.getEdges() != null
+                ? graph.getEdges().stream().map(this::toEdgeDTO).toList()
+                : new ArrayList<>();
+
+        return com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO.builder()
+                .pipelineId(graph.getPipelineId())
+                .user(graph.getUser())
+                .totalPathways(graph.getTotalPathways())
+                .executionTimeMs(graph.getExecutionTimeMs())
+                .nodes(nodeDTOs)
+                .edges(edgeDTOs)
+                .build();
+    }
+
+    public com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO toNodeDTO(PathwayObject node) {
+        if (node == null) {
+            return null;
+        }
+        String rawRole = node.getRole() != null && !node.getRole().isBlank() ? node.getRole() : "protein";
+        return com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO.builder()
+                .name(node.getName())
+                .role(rawRole)
+                .type(formatRoleDisplayType(rawRole))
+                .build();
+    }
+
+    public com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO toEdgeDTO(GraphEdge edge) {
+        if (edge == null) {
+            return null;
+        }
+        return com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO.builder()
+                .first(edge.getFirst())
+                .relation(edge.getRelation())
+                .second(edge.getSecond())
+                .object1(edge.getFirst())
+                .interaction(edge.getRelation())
+                .object2(edge.getSecond())
+                .pathwayCount(edge.getPathwayCount())
+                .build();
+    }
+
+    public static String formatRoleDisplayType(String role) {
+        if (role == null || role.isBlank()) {
+            return "Protein";
+        }
+        String normalized = role.toLowerCase().trim().replace("-", "_").replace(" ", "_");
+        return switch (normalized) {
+            case "protein" -> "Protein";
+            case "gene" -> "Gene";
+            case "enzyme" -> "Enzyme";
+            case "receptor" -> "Receptor";
+            case "ligand" -> "Ligand";
+            case "transcription_factor", "tf" -> "Transcription Factor";
+            case "adaptor_protein" -> "Adaptor Protein";
+            case "disease" -> "Disease";
+            case "variant" -> "Variant";
+            default -> {
+                String[] parts = normalized.split("_");
+                StringBuilder sb = new StringBuilder();
+                for (String p : parts) {
+                    if (!p.isEmpty()) {
+                        if (sb.length() > 0) sb.append(" ");
+                        sb.append(Character.toUpperCase(p.charAt(0))).append(p.substring(1));
+                    }
+                }
+                yield sb.isEmpty() ? "Protein" : sb.toString();
+            }
+        };
+    }
 }

@@ -203,21 +203,35 @@ public class InferenceController {
     }
 
     @GET
+    @Path("/pathway-graphs/{pipelineId}")
+    @Operation(summary = "Get consolidated pathway graph by pipelineId",
+            description = "Returns the consolidated biological pathway graph (nodes with formatted biological types and edges with pathway frequencies) from pathway_graphs for the specified pipelineId")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Pathway graph found",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO.class))),
+            @APIResponse(responseCode = "404", description = "Pathway graph not found for pipelineId")
+    })
+    public Response getPathwayGraphByPipelineId(@PathParam("pipelineId") String pipelineId) {
+        log.info("Fetching pathway graph from pathway_graphs for pipelineId: {}", pipelineId);
+        return inferPathways.getPathwayGraph(pipelineId)
+                .map(pathwayMapper::toGraphResponseDTO)
+                .map(dto -> Response.ok(dto).build())
+                .orElse(Response.status(Response.Status.NOT_FOUND)
+                        .entity(Map.of("status", "NOT_FOUND", "message", "Pathway graph not found for pipelineId: " + pipelineId))
+                        .build());
+    }
+
+    @GET
     @Path("/pathways/{pipelineId}/graph")
     @Operation(summary = "Get consolidated pathway graph for pipeline",
             description = "Returns the consolidated biological pathway graph (nodes and edges with pathway frequencies) for the specified pipelineId")
     @APIResponses({
             @APIResponse(responseCode = "200", description = "Pathway graph found",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = PathwayGraph.class))),
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO.class))),
             @APIResponse(responseCode = "404", description = "Pathway graph not found for pipelineId")
     })
     public Response getPathwayGraph(@PathParam("pipelineId") String pipelineId) {
-        log.info("Fetching pathway graph for pipelineId: {}", pipelineId);
-        return inferPathways.getPathwayGraph(pipelineId)
-                .map(graph -> Response.ok(graph).build())
-                .orElse(Response.status(Response.Status.NOT_FOUND)
-                        .entity(Map.of("status", "NOT_FOUND", "message", "Pathway graph not found for pipelineId: " + pipelineId))
-                        .build());
+        return getPathwayGraphByPipelineId(pipelineId);
     }
 
     @GET

@@ -1478,7 +1478,24 @@ run :-
         if (pathwayRepository == null) {
             throw new IllegalStateException("PathwayRepository is not configured");
         }
-        return pathwayRepository.findGraphByPipelineId(pipelineId);
+        Optional<PathwayGraph> graphOpt = pathwayRepository.findGraphByPipelineId(pipelineId);
+        if (graphOpt.isPresent() && inferenceRepository != null) {
+            PathwayGraph graph = graphOpt.get();
+            inferenceRepository.findByPipelineId(pipelineId).ifPresent(inference -> {
+                Map<String, List<String>> rolesMap = inference.getRoles();
+                if (rolesMap != null && !rolesMap.isEmpty() && graph.getNodes() != null) {
+                    for (PathwayObject node : graph.getNodes()) {
+                        if (node != null && node.getName() != null) {
+                            List<String> configuredRoles = rolesMap.get(node.getName());
+                            if (configuredRoles != null && !configuredRoles.isEmpty()) {
+                                node.setRole(resolvePrimaryRole(configuredRoles));
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        return graphOpt;
     }
 
     @Override
@@ -1525,6 +1542,8 @@ run :-
         if (lower.contains("transcription_factor") || lower.contains("tf")) return "transcription_factor";
         if (lower.contains("adaptor_protein")) return "adaptor_protein";
         if (lower.contains("disease")) return "disease";
+        if (lower.contains("variant")) return "variant";
+        if (lower.contains("gene")) return "gene";
         return "protein";
     }
 
@@ -1540,6 +1559,8 @@ run :-
             case "transcription_factor", "tf" -> "transcription_factor";
             case "adaptor_protein" -> "adaptor_protein";
             case "disease" -> "disease";
+            case "variant" -> "variant";
+            case "gene" -> "gene";
             case "protein" -> "protein";
             default -> null;
         };
