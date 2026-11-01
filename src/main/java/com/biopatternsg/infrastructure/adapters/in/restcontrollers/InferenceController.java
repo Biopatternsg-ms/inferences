@@ -18,7 +18,6 @@ package com.biopatternsg.infrastructure.adapters.in.restcontrollers;
 import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.Inference;
-import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.port.in.InferPathways;
 import com.biopatternsg.domain.port.in.SaveClosingObjects;
 import com.biopatternsg.infrastructure.dtos.SaveClosingObjectsRequestDTO;
