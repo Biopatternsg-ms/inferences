@@ -21,6 +21,9 @@ import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.model.PathwayObject;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwayDTO;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwaysResponseDTO;
+import java.util.Map;
 import com.biopatternsg.infrastructure.mongo.GraphEdgeDocument;
 import com.biopatternsg.infrastructure.mongo.KbEventCollection;
 import com.biopatternsg.infrastructure.mongo.KbObjectCollection;
@@ -215,5 +218,168 @@ class PathwayMapperTest {
         assertEquals("IRF3", dto.getEdges().get(0).getSecond());
         assertEquals("IRF3", dto.getEdges().get(0).getObject2());
         assertEquals(12L, dto.getEdges().get(0).getPathwayCount());
+    }
+
+    @Test
+    @DisplayName("Should group pathways by identical ordered object sequences and length, and not group different orders or lengths")
+    void shouldGroupPathwaysByExactOrderedObjectsAndLength() {
+        // Pathway 1: A -> relacionA -> B; B -> relacionB -> C; C -> relacionC -> D
+        BiologicalPathway p1 = BiologicalPathway.builder()
+                .pipelineId("pipe-test")
+                .length(3)
+                .startObject("A")
+                .endObject("D")
+                .events(List.of(
+                        new PathwayEvent("A", "relacionA", "B", 1),
+                        new PathwayEvent("B", "relacionB", "C", 2),
+                        new PathwayEvent("C", "relacionC", "D", 3)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "protein"),
+                        new PathwayObject("D", "protein")
+                ))
+                .build();
+
+        // Pathway 2: A -> relacionX -> B; B -> relacionY -> C; C -> relacionY -> D (SAME sequence A->B->C->D)
+        BiologicalPathway p2 = BiologicalPathway.builder()
+                .pipelineId("pipe-test")
+                .length(3)
+                .startObject("A")
+                .endObject("D")
+                .events(List.of(
+                        new PathwayEvent("A", "relacionX", "B", 1),
+                        new PathwayEvent("B", "relacionY", "C", 2),
+                        new PathwayEvent("C", "relacionY", "D", 3)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "protein"),
+                        new PathwayObject("D", "protein")
+                ))
+                .build();
+
+        // Pathway 3: A -> relacionA -> C; C -> relacionB -> B; B -> relacionC -> D (DIFFERENT order: A->C->B->D)
+        BiologicalPathway p3 = BiologicalPathway.builder()
+                .pipelineId("pipe-test")
+                .length(3)
+                .startObject("A")
+                .endObject("D")
+                .events(List.of(
+                        new PathwayEvent("A", "relacionA", "C", 1),
+                        new PathwayEvent("C", "relacionB", "B", 2),
+                        new PathwayEvent("B", "relacionC", "D", 3)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("C", "protein"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("D", "protein")
+                ))
+                .build();
+
+        // Pathway 4: A -> relacionA -> B; B -> relacionB -> C (DIFFERENT length: 2 events)
+        BiologicalPathway p4 = BiologicalPathway.builder()
+                .pipelineId("pipe-test")
+                .length(2)
+                .startObject("A")
+                .endObject("C")
+                .events(List.of(
+                        new PathwayEvent("A", "relacionA", "B", 1),
+                        new PathwayEvent("B", "relacionB", "C", 2)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "protein")
+                ))
+                .build();
+
+        List<BiologicalPathway> inputList = List.of(p1, p2, p3, p4);
+        List<GroupedPathwayDTO> groups = mapper.groupPathways(inputList, Map.of("A", "ligand", "D", "transcription_factor"));
+
+        assertNotNull(groups);
+        assertEquals(3, groups.size(), "Should produce exactly 3 groups (A->B->C->D, A->C->B->D, and A->B->C)");
+
+        // Group 1: A->B->C->D (pathways p1 and p2)
+        GroupedPathwayDTO group1 = groups.get(0);
+        assertEquals("A->B->C->D", group1.getGroupId());
+        assertEquals(3, group1.getLength());
+        assertEquals("A", group1.getStartObject());
+        assertEquals("D", group1.getEndObject());
+        assertEquals(2, group1.getPathwaysCount());
+        assertEquals(4, group1.getObjects().size());
+        assertEquals("A", group1.getObjects().get(0).getName());
+        assertEquals("ligand", group1.getObjects().get(0).getRole());
+        assertEquals("D", group1.getObjects().get(3).getName());
+        assertEquals("transcription_factor", group1.getObjects().get(3).getRole());
+
+        // Verify consolidated relations in group 1
+        assertEquals(List.of("relacionA", "relacionB", "relacionC", "relacionX", "relacionY"), group1.getRelations());
+
+        // Verify steps in group 1
+        assertEquals(3, group1.getSteps().size());
+        assertEquals("A", group1.getSteps().get(0).getFirst());
+        assertEquals("B", group1.getSteps().get(0).getSecond());
+        assertEquals(List.of("relacionA", "relacionX"), group1.getSteps().get(0).getRelations());
+
+        assertEquals("B", group1.getSteps().get(1).getFirst());
+        assertEquals("C", group1.getSteps().get(1).getSecond());
+        assertEquals(List.of("relacionB", "relacionY"), group1.getSteps().get(1).getRelations());
+
+        assertEquals("C", group1.getSteps().get(2).getFirst());
+        assertEquals("D", group1.getSteps().get(2).getSecond());
+        assertEquals(List.of("relacionC", "relacionY"), group1.getSteps().get(2).getRelations());
+
+        // Verify relation combinations
+        assertEquals(2, group1.getRelationCombinations().size());
+        assertEquals(List.of("relacionA", "relacionB", "relacionC"), group1.getRelationCombinations().get(0));
+        assertEquals(List.of("relacionX", "relacionY", "relacionY"), group1.getRelationCombinations().get(1));
+
+        // Group 2: A->C->B->D
+        GroupedPathwayDTO group2 = groups.get(1);
+        assertEquals("A->C->B->D", group2.getGroupId());
+        assertEquals(1, group2.getPathwaysCount());
+        assertEquals(List.of("A", "C", "B", "D"), group2.getObjects().stream().map(o -> o.getName()).toList());
+
+        // Group 3: A->B->C
+        GroupedPathwayDTO group3 = groups.get(2);
+        assertEquals("A->B->C", group3.getGroupId());
+        assertEquals(2, group3.getLength());
+        assertEquals(1, group3.getPathwaysCount());
+    }
+
+    @Test
+    @DisplayName("Should paginate grouped pathways in toGroupedPathwaysResponseDTO")
+    void shouldPaginateGroupedPathwaysResponseDTO() {
+        BiologicalPathway p1 = BiologicalPathway.builder()
+                .pipelineId("p-test")
+                .events(List.of(new PathwayEvent("A", "rel1", "B", 1)))
+                .build();
+        BiologicalPathway p2 = BiologicalPathway.builder()
+                .pipelineId("p-test")
+                .events(List.of(new PathwayEvent("B", "rel2", "C", 1)))
+                .build();
+        BiologicalPathway p3 = BiologicalPathway.builder()
+                .pipelineId("p-test")
+                .events(List.of(new PathwayEvent("C", "rel3", "D", 1)))
+                .build();
+
+        // Page 0, Size 2 (out of 3 groups)
+        GroupedPathwaysResponseDTO response = mapper.toGroupedPathwaysResponseDTO("p-test", List.of(p1, p2, p3), Map.of(), 0, 2);
+        assertNotNull(response);
+        assertEquals("p-test", response.getPipelineId());
+        assertEquals(3L, response.getTotalRawPathways());
+        assertEquals(3, response.getTotalGroups());
+        assertEquals(0, response.getPage());
+        assertEquals(2, response.getSize());
+        assertEquals(2, response.getGroups().size());
+
+        // Page 1, Size 2 (remaining 1 group)
+        GroupedPathwaysResponseDTO page1 = mapper.toGroupedPathwaysResponseDTO("p-test", List.of(p1, p2, p3), Map.of(), 1, 2);
+        assertEquals(1, page1.getGroups().size());
+        assertEquals("C->D", page1.getGroups().get(0).getGroupId());
     }
 }
