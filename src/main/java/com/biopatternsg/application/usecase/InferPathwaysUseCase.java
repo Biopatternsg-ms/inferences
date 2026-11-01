@@ -51,7 +51,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
@@ -1501,7 +1500,7 @@ run :-
      * Resolves and pre-computes an O(1) lookup map of object names to their single primary role
      * configured for the pipeline, avoiding repeated role evaluation in loops.
      */
-    public Map<String, String> resolveConfiguredRoleMap(String pipelineId) {
+    private Map<String, String> resolveConfiguredRoleMap(String pipelineId) {
         if (pipelineId == null || pipelineId.isBlank() || inferenceRepository == null) {
             return Collections.emptyMap();
         }
