@@ -260,12 +260,8 @@ public class InferenceController {
                     .build();
         }
 
-        Map<String, String> roleMap = (inferPathways instanceof com.biopatternsg.application.usecase.InferPathwaysUseCase useCase)
-                ? useCase.resolveConfiguredRoleMap(pipelineId)
-                : Map.of();
-
         GroupedPathwaysResponseDTO response = pathwayMapper.toGroupedPathwaysResponseDTO(
-                pipelineId, pathways, roleMap, page, size);
+                pipelineId, pathways, Map.of(), page, size);
 
         return Response.ok(response).build();
     }
