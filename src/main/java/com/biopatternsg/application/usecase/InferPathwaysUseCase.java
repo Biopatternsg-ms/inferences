@@ -51,6 +51,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Semaphore;
@@ -1479,22 +1480,7 @@ run :-
             throw new IllegalStateException("PathwayRepository is not configured");
         }
         Optional<PathwayGraph> graphOpt = pathwayRepository.findGraphByPipelineId(pipelineId);
-        if (graphOpt.isPresent() && inferenceRepository != null) {
-            PathwayGraph graph = graphOpt.get();
-            inferenceRepository.findByPipelineId(pipelineId).ifPresent(inference -> {
-                Map<String, List<String>> rolesMap = inference.getRoles();
-                if (rolesMap != null && !rolesMap.isEmpty() && graph.getNodes() != null) {
-                    for (PathwayObject node : graph.getNodes()) {
-                        if (node != null && node.getName() != null) {
-                            List<String> configuredRoles = rolesMap.get(node.getName());
-                            if (configuredRoles != null && !configuredRoles.isEmpty()) {
-                                node.setRole(resolvePrimaryRole(configuredRoles));
-                            }
-                        }
-                    }
-                }
-            });
-        }
+        graphOpt.ifPresent(graph -> enrichGraphNodesRoles(graph, resolveConfiguredRoleMap(pipelineId)));
         return graphOpt;
     }
 
@@ -1506,7 +1492,66 @@ run :-
         if (pathwayRepository == null) {
             throw new IllegalStateException("PathwayRepository is not configured");
         }
-        return pathwayRepository.findByPipelineId(pipelineId, startObject, endObject, containsObject, page, size);
+        List<BiologicalPathway> pathways = pathwayRepository.findByPipelineId(pipelineId, startObject, endObject, containsObject, page, size);
+        enrichPathwayObjectsRoles(pathways, resolveConfiguredRoleMap(pipelineId));
+        return pathways;
+    }
+
+    /**
+     * Resolves and pre-computes an O(1) lookup map of object names to their single primary role
+     * configured for the pipeline, avoiding repeated role evaluation in loops.
+     */
+    public Map<String, String> resolveConfiguredRoleMap(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank() || inferenceRepository == null) {
+            return Collections.emptyMap();
+        }
+        Optional<Inference> inferenceOpt = inferenceRepository.findByPipelineId(pipelineId);
+        if (inferenceOpt.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, List<String>> roles = inferenceOpt.get().getRoles();
+        if (roles == null || roles.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, String> roleMap = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : roles.entrySet()) {
+            String name = entry.getKey();
+            List<String> roleList = entry.getValue();
+            if (name != null && !name.isBlank() && roleList != null && !roleList.isEmpty()) {
+                roleMap.put(name, resolvePrimaryRole(roleList));
+            }
+        }
+        return roleMap;
+    }
+
+    private void enrichPathwayObjectsRoles(List<BiologicalPathway> pathways, Map<String, String> roleMap) {
+        if (pathways == null || pathways.isEmpty() || roleMap == null || roleMap.isEmpty()) {
+            return;
+        }
+        for (BiologicalPathway pathway : pathways) {
+            if (pathway == null || pathway.getObjects() == null) continue;
+            for (PathwayObject obj : pathway.getObjects()) {
+                if (obj == null || obj.getName() == null) continue;
+                String role = roleMap.get(obj.getName());
+                if (role != null) {
+                    obj.setRole(role);
+                }
+            }
+        }
+    }
+
+    private void enrichGraphNodesRoles(PathwayGraph graph, Map<String, String> roleMap) {
+        if (graph == null || graph.getNodes() == null || roleMap == null || roleMap.isEmpty()) {
+            return;
+        }
+        for (PathwayObject node : graph.getNodes()) {
+            if (node == null || node.getName() == null) continue;
+            String role = roleMap.get(node.getName());
+            if (role != null) {
+                node.setRole(role);
+            }
+        }
     }
 
     @Override

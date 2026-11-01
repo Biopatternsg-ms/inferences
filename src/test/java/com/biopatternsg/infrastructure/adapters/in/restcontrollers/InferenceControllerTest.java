@@ -373,4 +373,62 @@ class InferenceControllerTest {
                 .body("message", equalTo("Pathway inference process initiated"))
                 .body("pipelineId", equalTo("pipeline-test-123"));
     }
+
+    @Test
+    @DisplayName("GET /api/inferences/pathways/{pipelineId}/grouped should return 200 and grouped pathways")
+    void testGetGroupedPathways_Success() {
+        String pipeId = "pipe-grouped-123";
+        BiologicalPathway p1 = BiologicalPathway.builder()
+                .pipelineId(pipeId)
+                .events(List.of(
+                        new PathwayEvent("A", "relA", "B", 1),
+                        new PathwayEvent("B", "relB", "C", 2)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "protein")
+                ))
+                .build();
+        BiologicalPathway p2 = BiologicalPathway.builder()
+                .pipelineId(pipeId)
+                .events(List.of(
+                        new PathwayEvent("A", "relX", "B", 1),
+                        new PathwayEvent("B", "relY", "C", 2)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "protein")
+                ))
+                .build();
+
+        when(pathwayRepository.findByPipelineId(eq(pipeId), any(), any(), any(), eq(0), eq(0)))
+                .thenReturn(List.of(p1, p2));
+
+        given()
+                .when().get("/api/inferences/pathways/" + pipeId + "/grouped")
+                .then()
+                .statusCode(200)
+                .body("pipelineId", equalTo(pipeId))
+                .body("totalRawPathways", equalTo(2))
+                .body("totalGroups", equalTo(1))
+                .body("groups[0].groupId", equalTo("A->B->C"))
+                .body("groups[0].pathwaysCount", equalTo(2))
+                .body("groups[0].steps", hasSize(2));
+    }
+
+    @Test
+    @DisplayName("GET /api/inferences/pathways/{pipelineId}/grouped should return 404 when no pathways exist")
+    void testGetGroupedPathways_NotFound() {
+        String pipeId = "pipe-nonexistent";
+        when(pathwayRepository.findByPipelineId(eq(pipeId), any(), any(), any(), eq(0), eq(0)))
+                .thenReturn(Collections.emptyList());
+
+        given()
+                .when().get("/api/inferences/pathways/" + pipeId + "/grouped")
+                .then()
+                .statusCode(404)
+                .body("status", equalTo("NOT_FOUND"));
+    }
 }

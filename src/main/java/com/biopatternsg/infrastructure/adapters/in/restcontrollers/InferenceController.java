@@ -28,6 +28,7 @@ import com.biopatternsg.infrastructure.dtos.FindRolesRequestDTO;
 import com.biopatternsg.infrastructure.dtos.InferenceRequestDTO;
 import com.biopatternsg.infrastructure.dtos.InferenceResponseDTO;
 import com.biopatternsg.infrastructure.dtos.PathwayInferenceRequestDTO;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwaysResponseDTO;
 import com.biopatternsg.infrastructure.dtos.PathwayInferenceResponseDTO;
 import com.biopatternsg.infrastructure.mapper.InferenceMapper;
 import com.biopatternsg.infrastructure.mapper.PathwayMapper;
@@ -232,6 +233,42 @@ public class InferenceController {
     })
     public Response getPathwayGraph(@PathParam("pipelineId") String pipelineId) {
         return getPathwayGraphByPipelineId(pipelineId);
+    }
+
+    @GET
+    @Path("/pathways/{pipelineId}/grouped")
+    @Operation(summary = "Get biological pathways grouped by identical ordered object sequences",
+            description = "Retrieves biological pathways grouped by identical length and ordered sequence of objects across steps, with consolidated relations")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Grouped biological pathways",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON, schema = @Schema(implementation = GroupedPathwaysResponseDTO.class))),
+            @APIResponse(responseCode = "404", description = "No pathways found for pipelineId")
+    })
+    public Response getGroupedPathways(
+            @PathParam("pipelineId") String pipelineId,
+            @QueryParam("startObject") String startObject,
+            @QueryParam("endObject") String endObject,
+            @QueryParam("containsObject") String containsObject,
+            @QueryParam("page") @DefaultValue("0") int page,
+            @QueryParam("size") @DefaultValue("50") int size) {
+        log.info("Fetching grouped pathways for pipelineId: {}, page: {}, size: {}, startObject: {}, endObject: {}, containsObject: {}",
+                pipelineId, page, size, startObject, endObject, containsObject);
+
+        List<BiologicalPathway> pathways = inferPathways.getPathways(pipelineId, startObject, endObject, containsObject, 0, 0);
+        if (pathways == null || pathways.isEmpty()) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("status", "NOT_FOUND", "message", "No pathways found for pipelineId: " + pipelineId))
+                    .build();
+        }
+
+        Map<String, String> roleMap = (inferPathways instanceof com.biopatternsg.application.usecase.InferPathwaysUseCase useCase)
+                ? useCase.resolveConfiguredRoleMap(pipelineId)
+                : Map.of();
+
+        GroupedPathwaysResponseDTO response = pathwayMapper.toGroupedPathwaysResponseDTO(
+                pipelineId, pathways, roleMap, page, size);
+
+        return Response.ok(response).build();
     }
 
     @GET

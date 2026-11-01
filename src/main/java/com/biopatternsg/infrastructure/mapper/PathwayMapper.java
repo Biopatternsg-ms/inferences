@@ -21,6 +21,10 @@ import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.model.PathwayObject;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwayDTO;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwayObjectDTO;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwayStepDTO;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwaysResponseDTO;
 import com.biopatternsg.infrastructure.mongo.GraphEdgeDocument;
 import com.biopatternsg.infrastructure.mongo.KbEventCollection;
 import com.biopatternsg.infrastructure.mongo.KbObjectCollection;
@@ -33,7 +37,12 @@ import org.bson.types.ObjectId;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @ApplicationScoped
 public class PathwayMapper {
@@ -307,6 +316,265 @@ public class PathwayMapper {
                 .object2(edge.getSecond())
                 .pathwayCount(edge.getPathwayCount())
                 .build();
+    }
+
+    /**
+     * Groups biological pathways that share the exact same length and the exact same
+     * ordered sequence of objects across every transition step, consolidating all
+     * relations per step and across the group.
+     */
+    public List<GroupedPathwayDTO> groupPathways(
+            List<BiologicalPathway> pathways,
+            Map<String, String> roleOverrides) {
+        if (pathways == null || pathways.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, GroupAccumulator> groupsMap = new LinkedHashMap<>();
+
+        for (BiologicalPathway pathway : pathways) {
+            if (pathway == null) {
+                continue;
+            }
+            List<PathwayEvent> events = extractOrderedEvents(pathway);
+            if (events.isEmpty()) {
+                continue;
+            }
+
+            Map<String, String> pathwayObjectRoles = new LinkedHashMap<>();
+            if (pathway.getObjects() != null) {
+                for (PathwayObject po : pathway.getObjects()) {
+                    if (po != null && po.getName() != null && po.getRole() != null && !po.getRole().isBlank()) {
+                        pathwayObjectRoles.put(po.getName(), po.getRole());
+                    }
+                }
+            }
+
+            int length = events.size();
+            StringBuilder keyBuilder = new StringBuilder();
+            keyBuilder.append(length).append("|");
+
+            List<String> orderedObjectNames = new ArrayList<>(length + 1);
+            boolean isContiguousChain = true;
+
+            for (int i = 0; i < length; i++) {
+                PathwayEvent ev = events.get(i);
+                String first = ev.getFirst() != null ? ev.getFirst() : "";
+                String second = ev.getSecond() != null ? ev.getSecond() : "";
+                if (i > 0) {
+                    keyBuilder.append(";");
+                    String prevSecond = events.get(i - 1).getSecond() != null ? events.get(i - 1).getSecond() : "";
+                    if (!first.equals(prevSecond)) {
+                        isContiguousChain = false;
+                    }
+                }
+                keyBuilder.append(first).append("->").append(second);
+
+                if (i == 0) {
+                    orderedObjectNames.add(first);
+                } else if (!first.equals(orderedObjectNames.get(orderedObjectNames.size() - 1))) {
+                    orderedObjectNames.add(first);
+                }
+                orderedObjectNames.add(second);
+            }
+
+            String groupKey = keyBuilder.toString();
+            String groupId = isContiguousChain
+                    ? String.join("->", orderedObjectNames)
+                    : keyBuilder.substring(keyBuilder.indexOf("|") + 1);
+
+            GroupAccumulator acc = groupsMap.computeIfAbsent(groupKey, k ->
+                    new GroupAccumulator(groupId, length, orderedObjectNames, events));
+
+            acc.addPathway(events, pathwayObjectRoles, roleOverrides);
+        }
+
+        List<GroupedPathwayDTO> result = new ArrayList<>(groupsMap.size());
+        for (GroupAccumulator acc : groupsMap.values()) {
+            result.add(acc.toDTO());
+        }
+        return result;
+    }
+
+    public GroupedPathwaysResponseDTO toGroupedPathwaysResponseDTO(
+            String pipelineId,
+            List<BiologicalPathway> pathways,
+            Map<String, String> roleOverrides,
+            int page,
+            int size) {
+        List<BiologicalPathway> safePathways = pathways != null ? pathways : List.of();
+        List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides);
+
+        int totalGroups = allGroups.size();
+        List<GroupedPathwayDTO> pagedGroups;
+        if (page >= 0 && size > 0) {
+            int fromIndex = page * size;
+            if (fromIndex >= totalGroups) {
+                pagedGroups = List.of();
+            } else {
+                int toIndex = Math.min(fromIndex + size, totalGroups);
+                pagedGroups = allGroups.subList(fromIndex, toIndex);
+            }
+        } else {
+            pagedGroups = allGroups;
+        }
+
+        return GroupedPathwaysResponseDTO.builder()
+                .pipelineId(pipelineId)
+                .totalRawPathways((long) safePathways.size())
+                .totalGroups(totalGroups)
+                .page(Math.max(page, 0))
+                .size(size)
+                .groups(pagedGroups)
+                .build();
+    }
+
+    private List<PathwayEvent> extractOrderedEvents(BiologicalPathway pathway) {
+        if (pathway.getEvents() != null && !pathway.getEvents().isEmpty()) {
+            return pathway.getEvents();
+        }
+        String raw = pathway.getRawPattern();
+        if (raw == null || raw.isBlank()) {
+            return Collections.emptyList();
+        }
+        String[] segments = raw.split(";");
+        List<PathwayEvent> parsed = new ArrayList<>(segments.length);
+        int pos = 1;
+        for (String seg : segments) {
+            if (seg == null || seg.isBlank()) {
+                continue;
+            }
+            String[] parts = seg.split(",");
+            if (parts.length >= 3) {
+                String first = stripQuotes(parts[0].trim());
+                String relation = stripQuotes(parts[1].trim());
+                String second = stripQuotes(parts[2].trim());
+                parsed.add(PathwayEvent.builder()
+                        .first(first)
+                        .relation(relation)
+                        .second(second)
+                        .position(pos++)
+                        .build());
+            }
+        }
+        return parsed;
+    }
+
+    private static String stripQuotes(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
+    }
+
+    private static final class GroupAccumulator {
+        private final String groupId;
+        private final int length;
+        private final String startObject;
+        private final String endObject;
+        private final List<String> orderedObjectNames;
+        private final Map<String, String> objectRoles = new LinkedHashMap<>();
+        private final Set<String> allRelations = new LinkedHashSet<>();
+        private final List<StepAccumulator> stepAccumulators;
+        private final Set<List<String>> relationCombinations = new LinkedHashSet<>();
+        private int pathwaysCount = 0;
+
+        private GroupAccumulator(
+                String groupId,
+                int length,
+                List<String> orderedObjectNames,
+                List<PathwayEvent> templateEvents) {
+            this.groupId = groupId;
+            this.length = length;
+            this.orderedObjectNames = orderedObjectNames;
+            this.startObject = templateEvents.get(0).getFirst();
+            this.endObject = templateEvents.get(templateEvents.size() - 1).getSecond();
+            this.stepAccumulators = new ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                PathwayEvent ev = templateEvents.get(i);
+                this.stepAccumulators.add(new StepAccumulator(i + 1, ev.getFirst(), ev.getSecond()));
+            }
+        }
+
+        private void addPathway(
+                List<PathwayEvent> events,
+                Map<String, String> pathwayObjectRoles,
+                Map<String, String> roleOverrides) {
+            this.pathwaysCount++;
+
+            for (String objName : orderedObjectNames) {
+                if (roleOverrides != null && roleOverrides.containsKey(objName)) {
+                    objectRoles.put(objName, roleOverrides.get(objName));
+                } else if (!objectRoles.containsKey(objName)) {
+                    String role = pathwayObjectRoles.getOrDefault(objName, "protein");
+                    objectRoles.put(objName, role);
+                }
+            }
+
+            List<String> combination = new ArrayList<>(events.size());
+            for (int i = 0; i < events.size(); i++) {
+                String rel = events.get(i).getRelation();
+                if (rel != null && !rel.isBlank()) {
+                    allRelations.add(rel);
+                    stepAccumulators.get(i).relations.add(rel);
+                    combination.add(rel);
+                } else {
+                    combination.add("");
+                }
+            }
+            relationCombinations.add(combination);
+        }
+
+        private GroupedPathwayDTO toDTO() {
+            List<GroupedPathwayObjectDTO> objectsDTO = new ArrayList<>(orderedObjectNames.size());
+            for (int i = 0; i < orderedObjectNames.size(); i++) {
+                String name = orderedObjectNames.get(i);
+                String role = objectRoles.getOrDefault(name, "protein");
+                objectsDTO.add(GroupedPathwayObjectDTO.builder()
+                        .name(name)
+                        .role(role)
+                        .position(i + 1)
+                        .build());
+            }
+
+            List<GroupedPathwayStepDTO> stepsDTO = new ArrayList<>(stepAccumulators.size());
+            for (StepAccumulator stepAcc : stepAccumulators) {
+                stepsDTO.add(GroupedPathwayStepDTO.builder()
+                        .position(stepAcc.position)
+                        .first(stepAcc.first)
+                        .second(stepAcc.second)
+                        .relations(new ArrayList<>(stepAcc.relations))
+                        .build());
+            }
+
+            return GroupedPathwayDTO.builder()
+                    .groupId(groupId)
+                    .length(length)
+                    .startObject(startObject)
+                    .endObject(endObject)
+                    .pathwaysCount(pathwaysCount)
+                    .objects(objectsDTO)
+                    .relations(new ArrayList<>(allRelations))
+                    .steps(stepsDTO)
+                    .relationCombinations(new ArrayList<>(relationCombinations))
+                    .build();
+        }
+    }
+
+    private static final class StepAccumulator {
+        private final int position;
+        private final String first;
+        private final String second;
+        private final Set<String> relations = new LinkedHashSet<>();
+
+        private StepAccumulator(int position, String first, String second) {
+            this.position = position;
+            this.first = first;
+            this.second = second;
+        }
     }
 
     public static String formatRoleDisplayType(String role) {
