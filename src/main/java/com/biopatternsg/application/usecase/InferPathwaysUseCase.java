@@ -1575,6 +1575,14 @@ run :-
         return pathwayRepository.deleteByPipelineId(pipelineId);
     }
 
+    @Override
+    public Map<String, List<String>> getPubmedMap(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank() || knowledgeBaseRepository == null) {
+            return Collections.emptyMap();
+        }
+        return knowledgeBaseRepository.findPubmedMapByPipelineId(pipelineId);
+    }
+
     public static String resolvePrimaryRole(List<String> roles) {
         if (roles == null || roles.isEmpty()) {
             return "protein";

@@ -25,7 +25,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -74,6 +76,34 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
         }
 
         return List.of();
+    }
+
+    @Override
+    public Map<String, List<String>> findPubmedMapByPipelineId(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Collections.emptyMap();
+        }
+        Map<String, List<String>> map = new LinkedHashMap<>();
+        try {
+            List<KbEventCollection> kbEvents = KbEventCollection.list("pipelineId", pipelineId);
+            if (kbEvents != null) {
+                for (KbEventCollection kbe : kbEvents) {
+                    List<String> pmids = kbe.getPubmedIds() != null ? kbe.getPubmedIds() : List.of();
+                    if (kbe.id != null) {
+                        map.put(kbe.id.toHexString(), pmids);
+                    }
+                    String f = kbe.getFirst() != null ? kbe.getFirst().trim().toLowerCase() : "";
+                    String r = kbe.getRelation() != null ? kbe.getRelation().trim().toLowerCase() : "";
+                    String s = kbe.getSecond() != null ? kbe.getSecond().trim().toLowerCase() : "";
+                    if (!f.isEmpty() && !r.isEmpty() && !s.isEmpty()) {
+                        map.putIfAbsent(f + "|" + r + "|" + s, pmids);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not retrieve pubmed map from MongoDB for pipelineId {}: {}", pipelineId, e.getMessage());
+        }
+        return map;
     }
 
     @Override

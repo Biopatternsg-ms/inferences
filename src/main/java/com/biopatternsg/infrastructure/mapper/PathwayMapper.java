@@ -404,42 +404,25 @@ public class PathwayMapper {
         return result;
     }
 
-    private Map<String, List<String>> resolvePubmedIdsForPipeline(String pipelineId) {
-        if (pipelineId == null || pipelineId.isBlank()) {
-            return Collections.emptyMap();
-        }
-        Map<String, List<String>> map = new LinkedHashMap<>();
-        try {
-            List<KbEventCollection> kbEvents = KbEventCollection.list("pipelineId", pipelineId);
-            if (kbEvents != null) {
-                for (KbEventCollection kbe : kbEvents) {
-                    List<String> pmids = kbe.getPubmedIds() != null ? kbe.getPubmedIds() : List.of();
-                    if (kbe.id != null) {
-                        map.put(kbe.id.toHexString(), pmids);
-                    }
-                    String f = kbe.getFirst() != null ? kbe.getFirst().trim().toLowerCase() : "";
-                    String r = kbe.getRelation() != null ? kbe.getRelation().trim().toLowerCase() : "";
-                    String s = kbe.getSecond() != null ? kbe.getSecond().trim().toLowerCase() : "";
-                    if (!f.isEmpty() && !r.isEmpty() && !s.isEmpty()) {
-                        map.putIfAbsent(f + "|" + r + "|" + s, pmids);
-                    }
-                }
-            }
-        } catch (Exception ignored) {
-            // MongoDB not active or unit test environment
-        }
-        return map;
-    }
-
     public GroupedPathwaysResponseDTO toGroupedPathwaysResponseDTO(
             String pipelineId,
             List<BiologicalPathway> pathways,
             Map<String, String> roleOverrides,
             int page,
             int size) {
+        return toGroupedPathwaysResponseDTO(pipelineId, pathways, roleOverrides, Collections.emptyMap(), page, size);
+    }
+
+    public GroupedPathwaysResponseDTO toGroupedPathwaysResponseDTO(
+            String pipelineId,
+            List<BiologicalPathway> pathways,
+            Map<String, String> roleOverrides,
+            Map<String, List<String>> eventPubmedMap,
+            int page,
+            int size) {
         List<BiologicalPathway> safePathways = pathways != null ? pathways : List.of();
-        Map<String, List<String>> eventPubmedMap = resolvePubmedIdsForPipeline(pipelineId);
-        List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides, eventPubmedMap);
+        Map<String, List<String>> safePubmedMap = (eventPubmedMap != null) ? eventPubmedMap : Collections.emptyMap();
+        List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides, safePubmedMap);
 
         int totalGroups = allGroups.size();
         List<GroupedPathwayDTO> pagedGroups;

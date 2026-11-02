@@ -452,5 +452,10 @@ class PathwayMapperTest {
         assertEquals("ev-2", step2.getEvents().get(0).getId());
         assertEquals("activates", step2.getEvents().get(0).getRelation());
         assertEquals(List.of("33333"), step2.getEvents().get(0).getPubmedIds());
+
+        GroupedPathwaysResponseDTO dtoResponse = mapper.toGroupedPathwaysResponseDTO("p-test", List.of(p1, p2), Map.of(), pubmedMap, 0, 10);
+        assertNotNull(dtoResponse);
+        assertEquals(1, dtoResponse.getGroups().size());
+        assertEquals(List.of("11111", "22222"), dtoResponse.getGroups().get(0).getSteps().get(0).getEvents().get(0).getPubmedIds());
     }
 }

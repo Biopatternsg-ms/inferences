@@ -39,4 +39,5 @@ public interface InferPathways {
     List<BiologicalPathway> getPathways(String pipelineId, String startObject, String endObject, String containsObject, int page, int size);
     long countPathways(String pipelineId);
     long deletePathways(String pipelineId);
+    Map<String, List<String>> getPubmedMap(String pipelineId);
 }
