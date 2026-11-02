@@ -24,8 +24,16 @@ import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.model.PathwayObject;
 import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import java.util.Map;
+import com.biopatternsg.domain.port.in.FindRoles;
+import com.biopatternsg.domain.port.in.GetBiologicalObjects;
+import com.biopatternsg.domain.port.in.ResetBiologicalObjectsRoles;
+import com.biopatternsg.domain.port.in.SaveClosingObjects;
+import com.biopatternsg.domain.port.in.UpdateBiologicalObjects;
+import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
+import com.biopatternsg.domain.port.out.repositories.OntologiesRepository;
 import com.biopatternsg.domain.port.out.repositories.PathwayRepository;
+import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +63,30 @@ class InferenceControllerTest {
 
     @InjectMock
     InferenceRepository inferenceRepository;
+
+    @InjectMock
+    FindRoles findRoles;
+
+    @InjectMock
+    UpdateBiologicalObjects updateBiologicalObjects;
+
+    @InjectMock
+    ResetBiologicalObjectsRoles resetBiologicalObjectsRoles;
+
+    @InjectMock
+    GetBiologicalObjects getBiologicalObjects;
+
+    @InjectMock
+    SaveClosingObjects saveClosingObjects;
+
+    @InjectMock
+    PubmedIntegrationRepository pubmedIntegrationRepository;
+
+    @InjectMock
+    ConfigAndControlRepository configAndControlRepository;
+
+    @InjectMock
+    OntologiesRepository ontologiesRepository;
 
     @Test
     @DisplayName("GET /api/inferences/ping should return 200 and status UP")

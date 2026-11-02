@@ -260,8 +260,10 @@ public class InferenceController {
                     .build();
         }
 
+        Map<String, List<String>> eventPubmedMap = inferPathways.getPubmedMap(pipelineId);
+
         GroupedPathwaysResponseDTO response = pathwayMapper.toGroupedPathwaysResponseDTO(
-                pipelineId, pathways, Map.of(), page, size);
+                pipelineId, pathways, Map.of(), eventPubmedMap, page, size);
 
         return Response.ok(response).build();
     }

@@ -18,8 +18,10 @@ package com.biopatternsg.domain.port.out.repositories;
 import com.biopatternsg.domain.model.PathwayEvent;
 
 import java.util.List;
+import java.util.Map;
 
 public interface KnowledgeBaseRepository {
     List<PathwayEvent> findEventsByPipelineId(String pipelineId);
     List<PathwayEvent> findEventsByPipelineIdAndRestriction(String pipelineId, String restrictionLevel, List<String> alignedObjects);
+    Map<String, List<String>> findPubmedMapByPipelineId(String pipelineId);
 }
