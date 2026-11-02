@@ -24,6 +24,7 @@ import com.biopatternsg.domain.model.PathwayObject;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwayDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwayObjectDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwayStepDTO;
+import com.biopatternsg.infrastructure.dtos.GroupedPathwayStepEventDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwaysResponseDTO;
 import com.biopatternsg.infrastructure.mongo.GraphEdgeDocument;
 import com.biopatternsg.infrastructure.mongo.KbEventCollection;
@@ -326,6 +327,13 @@ public class PathwayMapper {
     public List<GroupedPathwayDTO> groupPathways(
             List<BiologicalPathway> pathways,
             Map<String, String> roleOverrides) {
+        return groupPathways(pathways, roleOverrides, Collections.emptyMap());
+    }
+
+    public List<GroupedPathwayDTO> groupPathways(
+            List<BiologicalPathway> pathways,
+            Map<String, String> roleOverrides,
+            Map<String, List<String>> eventPubmedMap) {
         if (pathways == null || pathways.isEmpty()) {
             return List.of();
         }
@@ -384,7 +392,7 @@ public class PathwayMapper {
                     : keyBuilder.substring(keyBuilder.indexOf("|") + 1);
 
             GroupAccumulator acc = groupsMap.computeIfAbsent(groupKey, k ->
-                    new GroupAccumulator(groupId, length, orderedObjectNames, events));
+                    new GroupAccumulator(groupId, length, orderedObjectNames, events, eventPubmedMap));
 
             acc.addPathway(events, pathwayObjectRoles, roleOverrides);
         }
@@ -396,6 +404,33 @@ public class PathwayMapper {
         return result;
     }
 
+    private Map<String, List<String>> resolvePubmedIdsForPipeline(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return Collections.emptyMap();
+        }
+        Map<String, List<String>> map = new LinkedHashMap<>();
+        try {
+            List<KbEventCollection> kbEvents = KbEventCollection.list("pipelineId", pipelineId);
+            if (kbEvents != null) {
+                for (KbEventCollection kbe : kbEvents) {
+                    List<String> pmids = kbe.getPubmedIds() != null ? kbe.getPubmedIds() : List.of();
+                    if (kbe.id != null) {
+                        map.put(kbe.id.toHexString(), pmids);
+                    }
+                    String f = kbe.getFirst() != null ? kbe.getFirst().trim().toLowerCase() : "";
+                    String r = kbe.getRelation() != null ? kbe.getRelation().trim().toLowerCase() : "";
+                    String s = kbe.getSecond() != null ? kbe.getSecond().trim().toLowerCase() : "";
+                    if (!f.isEmpty() && !r.isEmpty() && !s.isEmpty()) {
+                        map.putIfAbsent(f + "|" + r + "|" + s, pmids);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // MongoDB not active or unit test environment
+        }
+        return map;
+    }
+
     public GroupedPathwaysResponseDTO toGroupedPathwaysResponseDTO(
             String pipelineId,
             List<BiologicalPathway> pathways,
@@ -403,7 +438,8 @@ public class PathwayMapper {
             int page,
             int size) {
         List<BiologicalPathway> safePathways = pathways != null ? pathways : List.of();
-        List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides);
+        Map<String, List<String>> eventPubmedMap = resolvePubmedIdsForPipeline(pipelineId);
+        List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides, eventPubmedMap);
 
         int totalGroups = allGroups.size();
         List<GroupedPathwayDTO> pagedGroups;
@@ -476,20 +512,24 @@ public class PathwayMapper {
         private final String startObject;
         private final String endObject;
         private final List<String> orderedObjectNames;
+        private final Map<String, List<String>> eventPubmedMap;
         private final Map<String, String> objectRoles = new LinkedHashMap<>();
         private final Set<String> allRelations = new LinkedHashSet<>();
         private final List<StepAccumulator> stepAccumulators;
         private final Set<List<String>> relationCombinations = new LinkedHashSet<>();
+        private final Set<List<String>> eventIdCombinations = new LinkedHashSet<>();
         private int pathwaysCount = 0;
 
         private GroupAccumulator(
                 String groupId,
                 int length,
                 List<String> orderedObjectNames,
-                List<PathwayEvent> templateEvents) {
+                List<PathwayEvent> templateEvents,
+                Map<String, List<String>> eventPubmedMap) {
             this.groupId = groupId;
             this.length = length;
             this.orderedObjectNames = orderedObjectNames;
+            this.eventPubmedMap = eventPubmedMap != null ? eventPubmedMap : Collections.emptyMap();
             this.startObject = templateEvents.get(0).getFirst();
             this.endObject = templateEvents.get(templateEvents.size() - 1).getSecond();
             this.stepAccumulators = new ArrayList<>(length);
@@ -515,17 +555,33 @@ public class PathwayMapper {
             }
 
             List<String> combination = new ArrayList<>(events.size());
+            List<String> eventIdCombination = new ArrayList<>(events.size());
+
             for (int i = 0; i < events.size(); i++) {
-                String rel = events.get(i).getRelation();
+                PathwayEvent ev = events.get(i);
+                String rel = ev.getRelation();
+                String evId = ev.getId() != null ? ev.getId() : "";
                 if (rel != null && !rel.isBlank()) {
                     allRelations.add(rel);
-                    stepAccumulators.get(i).relations.add(rel);
+                    StepAccumulator stepAcc = stepAccumulators.get(i);
+                    List<String> pmids = eventPubmedMap.getOrDefault(evId,
+                            eventPubmedMap.getOrDefault(
+                                    (stepAcc.first != null ? stepAcc.first.trim().toLowerCase() : "") + "|" +
+                                    rel.trim().toLowerCase() + "|" +
+                                    (stepAcc.second != null ? stepAcc.second.trim().toLowerCase() : ""),
+                                    List.of()
+                            )
+                    );
+                    stepAcc.addEvent(rel, evId, pmids);
                     combination.add(rel);
+                    eventIdCombination.add(evId);
                 } else {
                     combination.add("");
+                    eventIdCombination.add(evId);
                 }
             }
             relationCombinations.add(combination);
+            eventIdCombinations.add(eventIdCombination);
         }
 
         private GroupedPathwayDTO toDTO() {
@@ -547,6 +603,7 @@ public class PathwayMapper {
                         .first(stepAcc.first)
                         .second(stepAcc.second)
                         .relations(new ArrayList<>(stepAcc.relations))
+                        .events(new ArrayList<>(stepAcc.eventsByRelation.values()))
                         .build());
             }
 
@@ -560,6 +617,7 @@ public class PathwayMapper {
                     .relations(new ArrayList<>(allRelations))
                     .steps(stepsDTO)
                     .relationCombinations(new ArrayList<>(relationCombinations))
+                    .eventIdCombinations(new ArrayList<>(eventIdCombinations))
                     .build();
         }
     }
@@ -569,11 +627,37 @@ public class PathwayMapper {
         private final String first;
         private final String second;
         private final Set<String> relations = new LinkedHashSet<>();
+        private final Map<String, GroupedPathwayStepEventDTO> eventsByRelation = new LinkedHashMap<>();
 
         private StepAccumulator(int position, String first, String second) {
             this.position = position;
             this.first = first;
             this.second = second;
+        }
+
+        private void addEvent(String relation, String eventId, List<String> pubmedIds) {
+            if (relation != null && !relation.isBlank()) {
+                relations.add(relation);
+                GroupedPathwayStepEventDTO existing = eventsByRelation.get(relation);
+                if (existing == null) {
+                    eventsByRelation.put(relation, GroupedPathwayStepEventDTO.builder()
+                            .id(eventId)
+                            .relation(relation)
+                            .pubmedIds(pubmedIds != null ? new ArrayList<>(pubmedIds) : new ArrayList<>())
+                            .build());
+                } else {
+                    if ((existing.getId() == null || existing.getId().isBlank()) && eventId != null && !eventId.isBlank()) {
+                        existing.setId(eventId);
+                    }
+                    if (pubmedIds != null && !pubmedIds.isEmpty()) {
+                        for (String pmid : pubmedIds) {
+                            if (!existing.getPubmedIds().contains(pmid)) {
+                                existing.getPubmedIds().add(pmid);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
