@@ -15,6 +15,7 @@
  */
 package com.biopatternsg.infrastructure.adapters.out;
 
+import com.biopatternsg.domain.model.KbEvent;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.PubmedIntegrationRepository;
@@ -80,28 +81,28 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
 
     @Override
     public Map<String, List<String>> findPubmedMapByPipelineId(String pipelineId) {
-        if (pipelineId == null || pipelineId.isBlank()) {
+        if (pipelineId == null || pipelineId.isBlank() || pubmedIntegrationRepository == null) {
             return Collections.emptyMap();
         }
         Map<String, List<String>> map = new LinkedHashMap<>();
         try {
-            List<KbEventCollection> kbEvents = KbEventCollection.list("pipelineId", pipelineId);
-            if (kbEvents != null) {
-                for (KbEventCollection kbe : kbEvents) {
-                    List<String> pmids = kbe.getPubmedIds() != null ? kbe.getPubmedIds() : List.of();
-                    if (kbe.id != null) {
-                        map.put(kbe.id.toHexString(), pmids);
+            List<KbEvent> events = pubmedIntegrationRepository.getEventsByPipeline(pipelineId);
+            if (events != null && !events.isEmpty()) {
+                for (KbEvent ev : events) {
+                    List<String> pmids = ev.pubmedIds() != null ? ev.pubmedIds() : List.of();
+                    if (ev.id() != null && !ev.id().isBlank()) {
+                        map.put(ev.id(), pmids);
                     }
-                    String f = kbe.getFirst() != null ? kbe.getFirst().trim().toLowerCase() : "";
-                    String r = kbe.getRelation() != null ? kbe.getRelation().trim().toLowerCase() : "";
-                    String s = kbe.getSecond() != null ? kbe.getSecond().trim().toLowerCase() : "";
+                    String f = ev.first() != null ? ev.first().trim().toLowerCase() : "";
+                    String r = ev.relation() != null ? ev.relation().trim().toLowerCase() : "";
+                    String s = ev.second() != null ? ev.second().trim().toLowerCase() : "";
                     if (!f.isEmpty() && !r.isEmpty() && !s.isEmpty()) {
                         map.putIfAbsent(f + "|" + r + "|" + s, pmids);
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("Could not retrieve pubmed map from MongoDB for pipelineId {}: {}", pipelineId, e.getMessage());
+            log.warn("Could not retrieve events from pubmed-integration for pubmed map for pipelineId {}: {}", pipelineId, e.getMessage());
         }
         return map;
     }
