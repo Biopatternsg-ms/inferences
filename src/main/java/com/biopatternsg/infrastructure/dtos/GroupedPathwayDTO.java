@@ -51,4 +51,7 @@ public class GroupedPathwayDTO {
 
     @Builder.Default
     private List<List<String>> relationCombinations = new ArrayList<>();
+
+    @Builder.Default
+    private List<List<String>> eventIdCombinations = new ArrayList<>();
 }

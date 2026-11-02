@@ -382,4 +382,75 @@ class PathwayMapperTest {
         assertEquals(1, page1.getGroups().size());
         assertEquals("C->D", page1.getGroups().get(0).getGroupId());
     }
+    @Test
+    @DisplayName("Should include eventIds and pubmedIds in steps and eventIdCombinations")
+    void shouldIncludeEventIdsAndPubmedIds() {
+        BiologicalPathway p1 = BiologicalPathway.builder()
+                .pipelineId("p-test")
+                .length(2)
+                .startObject("A")
+                .endObject("C")
+                .events(List.of(
+                        new PathwayEvent("ev-1", "A", "binds", "B", 1),
+                        new PathwayEvent("ev-2", "B", "activates", "C", 2)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "transcription_factor")
+                ))
+                .build();
+
+        BiologicalPathway p2 = BiologicalPathway.builder()
+                .pipelineId("p-test")
+                .length(2)
+                .startObject("A")
+                .endObject("C")
+                .events(List.of(
+                        new PathwayEvent("ev-3", "A", "inhibits", "B", 1),
+                        new PathwayEvent("ev-2", "B", "activates", "C", 2)
+                ))
+                .objects(List.of(
+                        new PathwayObject("A", "ligand"),
+                        new PathwayObject("B", "protein"),
+                        new PathwayObject("C", "transcription_factor")
+                ))
+                .build();
+
+        Map<String, List<String>> pubmedMap = Map.of(
+                "ev-1", List.of("11111", "22222"),
+                "ev-2", List.of("33333"),
+                "ev-3", List.of("44444")
+        );
+
+        List<GroupedPathwayDTO> groups = mapper.groupPathways(List.of(p1, p2), Map.of(), pubmedMap);
+        assertNotNull(groups);
+        assertEquals(1, groups.size());
+
+        GroupedPathwayDTO g = groups.get(0);
+        assertEquals("A->B->C", g.getGroupId());
+        assertEquals(2, g.getPathwaysCount());
+
+        // Combinations
+        assertEquals(List.of(List.of("binds", "activates"), List.of("inhibits", "activates")), g.getRelationCombinations());
+        assertEquals(List.of(List.of("ev-1", "ev-2"), List.of("ev-3", "ev-2")), g.getEventIdCombinations());
+
+        // Step 1: A -> B
+        var step1 = g.getSteps().get(0);
+        assertEquals(2, step1.getEvents().size());
+        assertEquals("ev-1", step1.getEvents().get(0).getId());
+        assertEquals("binds", step1.getEvents().get(0).getRelation());
+        assertEquals(List.of("11111", "22222"), step1.getEvents().get(0).getPubmedIds());
+
+        assertEquals("ev-3", step1.getEvents().get(1).getId());
+        assertEquals("inhibits", step1.getEvents().get(1).getRelation());
+        assertEquals(List.of("44444"), step1.getEvents().get(1).getPubmedIds());
+
+        // Step 2: B -> C
+        var step2 = g.getSteps().get(1);
+        assertEquals(1, step2.getEvents().size());
+        assertEquals("ev-2", step2.getEvents().get(0).getId());
+        assertEquals("activates", step2.getEvents().get(0).getRelation());
+        assertEquals(List.of("33333"), step2.getEvents().get(0).getPubmedIds());
+    }
 }

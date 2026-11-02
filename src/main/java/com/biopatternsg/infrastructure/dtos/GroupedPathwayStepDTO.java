@@ -40,4 +40,7 @@ public class GroupedPathwayStepDTO {
 
     @Builder.Default
     private List<String> relations = new ArrayList<>();
+
+    @Builder.Default
+    private List<GroupedPathwayStepEventDTO> events = new ArrayList<>();
 }
