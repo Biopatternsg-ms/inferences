@@ -1552,6 +1552,7 @@ run :-
             String containsObject,
             Integer length,
             String search,
+            Boolean favorite,
             int page,
             int size) {
         if (pipelineId == null || pipelineId.isBlank()) {
@@ -1570,9 +1571,9 @@ run :-
         }
 
         long totalGroups = pathwayRepository.countGroupedByPipelineId(
-                pipelineId, startObject, endObject, containsObject, length, search);
+                pipelineId, startObject, endObject, containsObject, length, search, favorite);
         List<GroupedPathway> groups = pathwayRepository.findGroupedByPipelineId(
-                pipelineId, startObject, endObject, containsObject, length, search, page, size);
+                pipelineId, startObject, endObject, containsObject, length, search, favorite, page, size);
         List<Integer> availableLengths = pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipelineId);
         long totalRawPathways = pathwayRepository.countByPipelineId(pipelineId);
 
@@ -1587,6 +1588,17 @@ run :-
                 .size(size)
                 .groups(groups)
                 .build();
+    }
+
+    @Override
+    public boolean setGroupedPathwayFavorite(String pipelineId, String groupId, boolean favorite) {
+        if (pipelineId == null || pipelineId.isBlank() || groupId == null || groupId.isBlank()) {
+            return false;
+        }
+        if (pathwayRepository == null) {
+            throw new IllegalStateException("PathwayRepository is not configured");
+        }
+        return pathwayRepository.updateGroupedPathwayFavorite(pipelineId, groupId, favorite);
     }
 
     /**

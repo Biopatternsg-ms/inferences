@@ -57,6 +57,7 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
             GroupedPathwayCollection.mongoCollection().createIndex(Indexes.ascending("pipelineId", "length"));
             GroupedPathwayCollection.mongoCollection().createIndex(Indexes.ascending("pipelineId", "startObject", "endObject"));
             GroupedPathwayCollection.mongoCollection().createIndex(Indexes.ascending("pipelineId", "objects.name"));
+            GroupedPathwayCollection.mongoCollection().createIndex(Indexes.ascending("pipelineId", "favorite"));
             PathwayGraphCollection.mongoCollection().createIndex(
                     Indexes.ascending("pipelineId"),
                     new IndexOptions().unique(true)
@@ -170,12 +171,13 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
             String containsObject,
             Integer length,
             String search,
+            Boolean favorite,
             int page,
             int size) {
         if (pipelineId == null || pipelineId.isBlank()) {
             return List.of();
         }
-        Document query = buildGroupedQuery(pipelineId, startObject, endObject, containsObject, length, search);
+        Document query = buildGroupedQuery(pipelineId, startObject, endObject, containsObject, length, search, favorite);
         PanacheQuery<GroupedPathwayCollection> panacheQuery = GroupedPathwayCollection.find(query);
         if (page >= 0 && size > 0) {
             panacheQuery = panacheQuery.page(Page.of(page, size));
@@ -192,11 +194,12 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
             String endObject,
             String containsObject,
             Integer length,
-            String search) {
+            String search,
+            Boolean favorite) {
         if (pipelineId == null || pipelineId.isBlank()) {
             return 0L;
         }
-        Document query = buildGroupedQuery(pipelineId, startObject, endObject, containsObject, length, search);
+        Document query = buildGroupedQuery(pipelineId, startObject, endObject, containsObject, length, search, favorite);
         return GroupedPathwayCollection.count(query);
     }
 
@@ -218,14 +221,33 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
         }
     }
 
+    @Override
+    public boolean updateGroupedPathwayFavorite(String pipelineId, String groupId, boolean favorite) {
+        if (pipelineId == null || pipelineId.isBlank() || groupId == null || groupId.isBlank()) {
+            return false;
+        }
+        GroupedPathwayCollection entity = GroupedPathwayCollection.find("pipelineId = ?1 and groupId = ?2", pipelineId, groupId).firstResult();
+        if (entity != null) {
+            entity.setFavorite(favorite);
+            entity.update();
+            log.info("Updated favorite status to {} for pipelineId: {}, groupId: {}", favorite, pipelineId, groupId);
+            return true;
+        }
+        return false;
+    }
+
     private Document buildGroupedQuery(
             String pipelineId,
             String startObject,
             String endObject,
             String containsObject,
             Integer length,
-            String search) {
+            String search,
+            Boolean favorite) {
         Document query = new Document("pipelineId", pipelineId);
+        if (Boolean.TRUE.equals(favorite)) {
+            query.append("favorite", true);
+        }
         if (startObject != null && !startObject.isBlank()) {
             query.append("startObject", startObject);
         }

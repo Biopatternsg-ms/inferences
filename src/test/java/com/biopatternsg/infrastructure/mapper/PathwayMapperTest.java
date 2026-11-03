@@ -134,6 +134,7 @@ class PathwayMapperTest {
                 ))
                 .relationCombinations(List.of(List.of("bind", "association")))
                 .eventIdCombinations(List.of(List.of("ev-10", "ev-20")))
+                .favorite(true)
                 .build();
 
         GroupedPathwayCollection entity = mapper.toGroupedEntity(model);
@@ -145,6 +146,7 @@ class PathwayMapperTest {
         assertEquals(3, entity.getPathwaysCount());
         assertEquals(2, entity.getSteps().size());
         assertEquals(List.of("99999"), entity.getSteps().get(0).getEvents().get(0).getPubmedIds());
+        assertEquals(true, entity.getFavorite());
 
         GroupedPathway back = mapper.toGroupedModel(entity);
         assertNotNull(back);
@@ -152,6 +154,7 @@ class PathwayMapperTest {
         assertEquals("A->B->C", back.getGroupId());
         assertEquals(3, back.getObjects().size());
         assertEquals(2, back.getSteps().size());
+        assertEquals(true, back.isFavorite());
 
         GroupedPathwaysPage pageModel = GroupedPathwaysPage.builder()
                 .pipelineId("pipe-g-1")

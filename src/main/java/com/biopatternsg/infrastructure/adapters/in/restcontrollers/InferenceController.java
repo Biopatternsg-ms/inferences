@@ -258,13 +258,14 @@ public class InferenceController {
             @QueryParam("containsObject") String containsObject,
             @QueryParam("length") Integer length,
             @QueryParam("search") String search,
+            @QueryParam("favorite") Boolean favorite,
             @QueryParam("page") @DefaultValue("0") int page,
             @QueryParam("size") @DefaultValue("50") int size) {
-        log.info("Fetching grouped pathways for pipelineId: {}, page: {}, size: {}, length: {}, search: {}, startObject: {}, endObject: {}, containsObject: {}",
-                pipelineId, page, size, length, search, startObject, endObject, containsObject);
+        log.info("Fetching grouped pathways for pipelineId: {}, page: {}, size: {}, length: {}, search: {}, favorite: {}, startObject: {}, endObject: {}, containsObject: {}",
+                pipelineId, page, size, length, search, favorite, startObject, endObject, containsObject);
 
         GroupedPathwaysPage pageModel = inferPathways.getGroupedPathways(
-                pipelineId, startObject, endObject, containsObject, length, search, page, size);
+                pipelineId, startObject, endObject, containsObject, length, search, favorite, page, size);
 
         boolean hasNoDataAtAll = pageModel == null || (
                 pageModel.getTotalRawPathways() == 0
@@ -289,7 +290,30 @@ public class InferenceController {
             String containsObject,
             int page,
             int size) {
-        return getGroupedPathways(pipelineId, startObject, endObject, containsObject, null, null, page, size);
+        return getGroupedPathways(pipelineId, startObject, endObject, containsObject, null, null, null, page, size);
+    }
+
+    @PUT
+    @Path("/pathways/{pipelineId}/grouped/{groupId}/favorite")
+    @Operation(summary = "Set favorite status for a grouped pathway",
+            description = "Updates the favorite boolean flag for a specific grouped pathway identified by pipelineId and groupId")
+    @APIResponses({
+            @APIResponse(responseCode = "200", description = "Favorite status updated successfully"),
+            @APIResponse(responseCode = "404", description = "Grouped pathway not found for pipelineId and groupId")
+    })
+    public Response setGroupedPathwayFavorite(
+            @PathParam("pipelineId") String pipelineId,
+            @PathParam("groupId") String groupId,
+            @QueryParam("favorite") @DefaultValue("true") boolean favorite) {
+        log.info("Setting favorite={} for pipelineId: {}, groupId: {}", favorite, pipelineId, groupId);
+        boolean updated = inferPathways.setGroupedPathwayFavorite(pipelineId, groupId, favorite);
+        if (!updated) {
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("status", "NOT_FOUND", "message", "Grouped pathway not found for pipelineId: " + pipelineId + " and groupId: " + groupId))
+                    .build();
+        }
+        return Response.ok(Map.of("status", "SUCCESS", "pipelineId", pipelineId, "groupId", groupId, "favorite", favorite))
+                .build();
     }
 
     @GET

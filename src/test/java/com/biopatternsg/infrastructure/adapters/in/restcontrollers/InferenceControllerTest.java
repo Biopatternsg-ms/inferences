@@ -430,9 +430,9 @@ class InferenceControllerTest {
                 .build();
 
         when(pathwayRepository.countByPipelineId(pipeId)).thenReturn(2L);
-        when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any())).thenReturn(1L);
+        when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any())).thenReturn(1L);
         when(pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipeId)).thenReturn(List.of(2));
-        when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+        when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(List.of(g1));
 
         given()
@@ -454,13 +454,44 @@ class InferenceControllerTest {
     void testGetGroupedPathways_NotFound() {
         String pipeId = "pipe-nonexistent";
         when(pathwayRepository.countByPipelineId(pipeId)).thenReturn(0L);
-        when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any())).thenReturn(0L);
+        when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any())).thenReturn(0L);
         when(pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipeId)).thenReturn(Collections.emptyList());
-        when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+        when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(Collections.emptyList());
 
         given()
                 .when().get("/api/inferences/pathways/" + pipeId + "/grouped")
+                .then()
+                .statusCode(404)
+                .body("status", equalTo("NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/inferences/pathways/{pipelineId}/grouped/{groupId}/favorite should return 200 when updated successfully")
+    void testSetGroupedPathwayFavorite_Success() {
+        String pipeId = "pipe-fav-123";
+        String groupId = "A->B->C";
+        when(pathwayRepository.updateGroupedPathwayFavorite(pipeId, groupId, true)).thenReturn(true);
+
+        given()
+                .when().put("/api/inferences/pathways/" + pipeId + "/grouped/" + groupId + "/favorite?favorite=true")
+                .then()
+                .statusCode(200)
+                .body("status", equalTo("SUCCESS"))
+                .body("pipelineId", equalTo(pipeId))
+                .body("groupId", equalTo(groupId))
+                .body("favorite", equalTo(true));
+    }
+
+    @Test
+    @DisplayName("PUT /api/inferences/pathways/{pipelineId}/grouped/{groupId}/favorite should return 404 when not found")
+    void testSetGroupedPathwayFavorite_NotFound() {
+        String pipeId = "pipe-fav-123";
+        String groupId = "non-existent-group";
+        when(pathwayRepository.updateGroupedPathwayFavorite(pipeId, groupId, true)).thenReturn(false);
+
+        given()
+                .when().put("/api/inferences/pathways/" + pipeId + "/grouped/" + groupId + "/favorite?favorite=true")
                 .then()
                 .statusCode(404)
                 .body("status", equalTo("NOT_FOUND"));
