@@ -29,6 +29,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,12 +58,16 @@ class PathwayRepositoryAdapterTest {
     @Test
     @DisplayName("findGroupedByPipelineId and countGroupedByPipelineId should handle null or blank pipelineId gracefully")
     void shouldHandleBlankPipelineIdInGroupedQueries() {
-        assertTrue(adapter.findGroupedByPipelineId(null, null, null, null, null, null, 0, 10).isEmpty());
-        assertTrue(adapter.findGroupedByPipelineId("  ", null, null, null, null, null, 0, 10).isEmpty());
-        assertEquals(0L, adapter.countGroupedByPipelineId(null, null, null, null, null, null));
-        assertEquals(0L, adapter.countGroupedByPipelineId("  ", null, null, null, null, null));
+        assertTrue(adapter.findGroupedByPipelineId(null, null, null, null, null, null, null, 0, 10).isEmpty());
+        assertTrue(adapter.findGroupedByPipelineId("  ", null, null, null, null, null, null, 0, 10).isEmpty());
+        assertEquals(0L, adapter.countGroupedByPipelineId(null, null, null, null, null, null, null));
+        assertEquals(0L, adapter.countGroupedByPipelineId("  ", null, null, null, null, null, null));
         assertTrue(adapter.findDistinctGroupedLengthsByPipelineId(null).isEmpty());
         assertTrue(adapter.findDistinctGroupedLengthsByPipelineId(" ").isEmpty());
+        assertFalse(adapter.updateGroupedPathwayFavorite(null, "grp1", true));
+        assertFalse(adapter.updateGroupedPathwayFavorite("pipe1", null, true));
+        assertFalse(adapter.updateGroupedPathwayFavorite("   ", "grp1", true));
+        assertFalse(adapter.updateGroupedPathwayFavorite("pipe1", "   ", true));
     }
 
     @Test

@@ -35,6 +35,7 @@ public interface PathwayRepository {
             String containsObject,
             Integer length,
             String search,
+            Boolean favorite,
             int page,
             int size);
     long countGroupedByPipelineId(
@@ -43,8 +44,10 @@ public interface PathwayRepository {
             String endObject,
             String containsObject,
             Integer length,
-            String search);
+            String search,
+            Boolean favorite);
     List<Integer> findDistinctGroupedLengthsByPipelineId(String pipelineId);
+    boolean updateGroupedPathwayFavorite(String pipelineId, String groupId, boolean favorite);
     long countByPipelineId(String pipelineId);
     long deleteByPipelineId(String pipelineId);
 }

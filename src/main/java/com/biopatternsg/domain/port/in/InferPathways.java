@@ -45,8 +45,10 @@ public interface InferPathways {
             String containsObject,
             Integer length,
             String search,
+            Boolean favorite,
             int page,
             int size);
+    boolean setGroupedPathwayFavorite(String pipelineId, String groupId, boolean favorite);
     long countPathways(String pipelineId);
     long deletePathways(String pipelineId);
     Map<String, List<String>> getPubmedMap(String pipelineId);

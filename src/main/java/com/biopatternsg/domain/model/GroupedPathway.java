@@ -47,5 +47,6 @@ public class GroupedPathway {
     private List<GroupedPathwayStep> steps;
     private List<List<String>> relationCombinations;
     private List<List<String>> eventIdCombinations;
+    private boolean favorite;
     private Instant createdAt;
 }

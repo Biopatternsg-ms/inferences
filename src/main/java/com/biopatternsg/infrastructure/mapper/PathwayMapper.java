@@ -137,6 +137,7 @@ public class PathwayMapper {
         entity.setRelations(model.getRelations() != null ? new ArrayList<>(model.getRelations()) : new ArrayList<>());
         entity.setRelationCombinations(model.getRelationCombinations() != null ? new ArrayList<>(model.getRelationCombinations()) : new ArrayList<>());
         entity.setEventIdCombinations(model.getEventIdCombinations() != null ? new ArrayList<>(model.getEventIdCombinations()) : new ArrayList<>());
+        entity.setFavorite(model.isFavorite());
 
         if (model.getObjects() != null) {
             entity.setObjects(model.getObjects().stream()
@@ -184,6 +185,7 @@ public class PathwayMapper {
                 .steps(steps)
                 .relationCombinations(entity.getRelationCombinations() != null ? new ArrayList<>(entity.getRelationCombinations()) : new ArrayList<>())
                 .eventIdCombinations(entity.getEventIdCombinations() != null ? new ArrayList<>(entity.getEventIdCombinations()) : new ArrayList<>())
+                .favorite(entity.getFavorite() != null && entity.getFavorite())
                 .createdAt(entity.getCreatedAt())
                 .build();
     }
@@ -309,6 +311,7 @@ public class PathwayMapper {
                 .steps(stepsDTO)
                 .relationCombinations(model.getRelationCombinations() != null ? new ArrayList<>(model.getRelationCombinations()) : new ArrayList<>())
                 .eventIdCombinations(model.getEventIdCombinations() != null ? new ArrayList<>(model.getEventIdCombinations()) : new ArrayList<>())
+                .favorite(model.isFavorite())
                 .build();
     }
 

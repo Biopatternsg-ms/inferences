@@ -45,5 +45,6 @@ public class GroupedPathwayCollection extends PanacheMongoEntity {
     private List<GroupedPathwayStepDocument> steps;
     private List<List<String>> relationCombinations;
     private List<List<String>> eventIdCombinations;
+    private Boolean favorite;
     private Instant createdAt;
 }
