@@ -16,6 +16,7 @@
 package com.biopatternsg.domain.port.out.repositories;
 
 import com.biopatternsg.domain.model.BiologicalPathway;
+import com.biopatternsg.domain.model.GroupedPathway;
 import com.biopatternsg.domain.model.PathwayGraph;
 
 import java.util.List;
@@ -23,9 +24,27 @@ import java.util.Optional;
 
 public interface PathwayRepository {
     void savePathwaysBatch(List<BiologicalPathway> pathways);
+    void saveGroupedPathwaysBatch(List<GroupedPathway> groupedPathways);
     void savePathwayGraph(PathwayGraph graph);
     Optional<PathwayGraph> findGraphByPipelineId(String pipelineId);
     List<BiologicalPathway> findByPipelineId(String pipelineId, String startObject, String endObject, String containsObject, int page, int size);
+    List<GroupedPathway> findGroupedByPipelineId(
+            String pipelineId,
+            String startObject,
+            String endObject,
+            String containsObject,
+            Integer length,
+            String search,
+            int page,
+            int size);
+    long countGroupedByPipelineId(
+            String pipelineId,
+            String startObject,
+            String endObject,
+            String containsObject,
+            Integer length,
+            String search);
+    List<Integer> findDistinctGroupedLengthsByPipelineId(String pipelineId);
     long countByPipelineId(String pipelineId);
     long deleteByPipelineId(String pipelineId);
 }

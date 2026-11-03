@@ -17,19 +17,21 @@ package com.biopatternsg.infrastructure.adapters.in.restcontrollers;
 
 import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.GraphEdge;
+import com.biopatternsg.domain.model.GroupedPathway;
+import com.biopatternsg.domain.model.GroupedPathwayObject;
+import com.biopatternsg.domain.model.GroupedPathwayStep;
+import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
-import com.biopatternsg.domain.model.Inference;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.model.PathwayObject;
-import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
-import java.util.Map;
 import com.biopatternsg.domain.port.in.FindRoles;
 import com.biopatternsg.domain.port.in.GetBiologicalObjects;
 import com.biopatternsg.domain.port.in.ResetBiologicalObjectsRoles;
 import com.biopatternsg.domain.port.in.SaveClosingObjects;
 import com.biopatternsg.domain.port.in.UpdateBiologicalObjects;
 import com.biopatternsg.domain.port.out.repositories.ConfigAndControlRepository;
+import com.biopatternsg.domain.port.out.repositories.InferenceRepository;
 import com.biopatternsg.domain.port.out.repositories.KnowledgeBaseRepository;
 import com.biopatternsg.domain.port.out.repositories.OntologiesRepository;
 import com.biopatternsg.domain.port.out.repositories.PathwayRepository;
@@ -41,12 +43,14 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -152,11 +156,6 @@ class InferenceControllerTest {
     @DisplayName("POST /api/inferences/pathways/run should execute inference and persist to MongoDB")
     void testRunEndpointSuccess() {
         String pipeId = "pipe-api-test-01";
-        List<KbObject> objects = List.of(
-                KbObject.builder().name("IFNA1").roles(List.of("ligand", "protein")).build(),
-                KbObject.builder().name("IRF7").roles(List.of("protein")).build(),
-                KbObject.builder().name("IRF3").roles(List.of("transcription_factor", "protein")).build()
-        );
         List<PathwayEvent> events = List.of(
                 new PathwayEvent("IFNA1", "association", "IRF7"),
                 new PathwayEvent("IRF7", "bind", "IRF3")
@@ -198,6 +197,7 @@ class InferenceControllerTest {
 
         verify(pathwayRepository).deleteByPipelineId(pipeId);
         verify(pathwayRepository).savePathwaysBatch(anyList());
+        verify(pathwayRepository).saveGroupedPathwaysBatch(anyList());
         verify(pathwayRepository).savePathwayGraph(any());
     }
 
@@ -407,36 +407,33 @@ class InferenceControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/inferences/pathways/{pipelineId}/grouped should return 200 and grouped pathways")
+    @DisplayName("GET /api/inferences/pathways/{pipelineId}/grouped should return 200 and grouped pathways from grouped_pathways collection")
     void testGetGroupedPathways_Success() {
         String pipeId = "pipe-grouped-123";
-        BiologicalPathway p1 = BiologicalPathway.builder()
+        GroupedPathway g1 = GroupedPathway.builder()
                 .pipelineId(pipeId)
-                .events(List.of(
-                        new PathwayEvent("A", "relA", "B", 1),
-                        new PathwayEvent("B", "relB", "C", 2)
-                ))
+                .groupId("A->B->C")
+                .length(2)
+                .startObject("A")
+                .endObject("C")
+                .pathwaysCount(2)
                 .objects(List.of(
-                        new PathwayObject("A", "ligand"),
-                        new PathwayObject("B", "protein"),
-                        new PathwayObject("C", "protein")
+                        new GroupedPathwayObject("A", "ligand", 1),
+                        new GroupedPathwayObject("B", "protein", 2),
+                        new GroupedPathwayObject("C", "protein", 3)
                 ))
-                .build();
-        BiologicalPathway p2 = BiologicalPathway.builder()
-                .pipelineId(pipeId)
-                .events(List.of(
-                        new PathwayEvent("A", "relX", "B", 1),
-                        new PathwayEvent("B", "relY", "C", 2)
-                ))
-                .objects(List.of(
-                        new PathwayObject("A", "ligand"),
-                        new PathwayObject("B", "protein"),
-                        new PathwayObject("C", "protein")
+                .relations(List.of("relA", "relB", "relX", "relY"))
+                .steps(List.of(
+                        GroupedPathwayStep.builder().position(1).first("A").second("B").relations(List.of("relA", "relX")).build(),
+                        GroupedPathwayStep.builder().position(2).first("B").second("C").relations(List.of("relB", "relY")).build()
                 ))
                 .build();
 
-        when(pathwayRepository.findByPipelineId(eq(pipeId), any(), any(), any(), eq(0), eq(0)))
-                .thenReturn(List.of(p1, p2));
+        when(pathwayRepository.countByPipelineId(pipeId)).thenReturn(2L);
+        when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any())).thenReturn(1L);
+        when(pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipeId)).thenReturn(List.of(2));
+        when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), anyInt(), anyInt()))
+                .thenReturn(List.of(g1));
 
         given()
                 .when().get("/api/inferences/pathways/" + pipeId + "/grouped")
@@ -445,6 +442,8 @@ class InferenceControllerTest {
                 .body("pipelineId", equalTo(pipeId))
                 .body("totalRawPathways", equalTo(2))
                 .body("totalGroups", equalTo(1))
+                .body("availableLengths", hasSize(1))
+                .body("availableLengths[0]", equalTo(2))
                 .body("groups[0].groupId", equalTo("A->B->C"))
                 .body("groups[0].pathwaysCount", equalTo(2))
                 .body("groups[0].steps", hasSize(2));
@@ -454,7 +453,10 @@ class InferenceControllerTest {
     @DisplayName("GET /api/inferences/pathways/{pipelineId}/grouped should return 404 when no pathways exist")
     void testGetGroupedPathways_NotFound() {
         String pipeId = "pipe-nonexistent";
-        when(pathwayRepository.findByPipelineId(eq(pipeId), any(), any(), any(), eq(0), eq(0)))
+        when(pathwayRepository.countByPipelineId(pipeId)).thenReturn(0L);
+        when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any())).thenReturn(0L);
+        when(pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipeId)).thenReturn(Collections.emptyList());
+        when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(Collections.emptyList());
 
         given()

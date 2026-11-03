@@ -16,15 +16,22 @@
 package com.biopatternsg.infrastructure.mapper;
 
 import com.biopatternsg.domain.model.BiologicalPathway;
+import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.GraphEdge;
+import com.biopatternsg.domain.model.GroupedPathway;
+import com.biopatternsg.domain.model.GroupedPathwayObject;
+import com.biopatternsg.domain.model.GroupedPathwayStep;
+import com.biopatternsg.domain.model.GroupedPathwayStepEvent;
+import com.biopatternsg.domain.model.GroupedPathwaysPage;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.domain.model.PathwayObject;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwayDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwaysResponseDTO;
-import java.util.Map;
-import com.biopatternsg.infrastructure.mongo.GraphEdgeDocument;
+import com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO;
+import com.biopatternsg.infrastructure.dtos.PathwayInferenceResponseDTO;
+import com.biopatternsg.infrastructure.mongo.GroupedPathwayCollection;
 import com.biopatternsg.infrastructure.mongo.KbEventCollection;
 import com.biopatternsg.infrastructure.mongo.KbObjectCollection;
 import com.biopatternsg.infrastructure.mongo.PathwayCollection;
@@ -35,6 +42,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -92,6 +100,81 @@ class PathwayMapperTest {
     }
 
     @Test
+    @DisplayName("Should map GroupedPathway to GroupedPathwayCollection and back to domain model and DTO")
+    void shouldMapGroupedPathwayBidirectionalAndToDTO() {
+        GroupedPathway model = GroupedPathway.builder()
+                .pipelineId("pipe-g-1")
+                .user("user-g")
+                .groupId("A->B->C")
+                .length(2)
+                .startObject("A")
+                .endObject("C")
+                .pathwaysCount(3)
+                .objects(List.of(
+                        new GroupedPathwayObject("A", "ligand", 1),
+                        new GroupedPathwayObject("B", "protein", 2),
+                        new GroupedPathwayObject("C", "transcription_factor", 3)
+                ))
+                .relations(List.of("bind", "association"))
+                .steps(List.of(
+                        GroupedPathwayStep.builder()
+                                .position(1)
+                                .first("A")
+                                .second("B")
+                                .relations(List.of("bind"))
+                                .events(List.of(new GroupedPathwayStepEvent("ev-10", "bind", List.of("99999"))))
+                                .build(),
+                        GroupedPathwayStep.builder()
+                                .position(2)
+                                .first("B")
+                                .second("C")
+                                .relations(List.of("association"))
+                                .events(List.of(new GroupedPathwayStepEvent("ev-20", "association", List.of("88888"))))
+                                .build()
+                ))
+                .relationCombinations(List.of(List.of("bind", "association")))
+                .eventIdCombinations(List.of(List.of("ev-10", "ev-20")))
+                .build();
+
+        GroupedPathwayCollection entity = mapper.toGroupedEntity(model);
+        assertNotNull(entity);
+        entity.id = new ObjectId();
+        assertEquals("pipe-g-1", entity.getPipelineId());
+        assertEquals("A->B->C", entity.getGroupId());
+        assertEquals(2, entity.getLength());
+        assertEquals(3, entity.getPathwaysCount());
+        assertEquals(2, entity.getSteps().size());
+        assertEquals(List.of("99999"), entity.getSteps().get(0).getEvents().get(0).getPubmedIds());
+
+        GroupedPathway back = mapper.toGroupedModel(entity);
+        assertNotNull(back);
+        assertEquals(entity.id.toHexString(), back.getId());
+        assertEquals("A->B->C", back.getGroupId());
+        assertEquals(3, back.getObjects().size());
+        assertEquals(2, back.getSteps().size());
+
+        GroupedPathwaysPage pageModel = GroupedPathwaysPage.builder()
+                .pipelineId("pipe-g-1")
+                .totalRawPathways(10L)
+                .totalGroups(1L)
+                .availableLengths(List.of(2, 3))
+                .page(0)
+                .size(20)
+                .groups(List.of(back))
+                .build();
+
+        GroupedPathwaysResponseDTO pageDTO = mapper.toGroupedPathwaysResponseDTO(pageModel);
+        assertNotNull(pageDTO);
+        assertEquals("pipe-g-1", pageDTO.getPipelineId());
+        assertEquals(10L, pageDTO.getTotalRawPathways());
+        assertEquals(1, pageDTO.getTotalGroups());
+        assertEquals(List.of(2, 3), pageDTO.getAvailableLengths());
+        assertEquals(1, pageDTO.getGroups().size());
+        assertEquals("A->B->C", pageDTO.getGroups().get(0).getGroupId());
+        assertEquals(List.of("99999"), pageDTO.getGroups().get(0).getSteps().get(0).getEvents().get(0).getPubmedIds());
+    }
+
+    @Test
     @DisplayName("Should map PathwayGraph to PathwayGraphCollection and back to model")
     void shouldMapPathwayGraphBidirectional() {
         PathwayGraph graph = PathwayGraph.builder()
@@ -141,6 +224,7 @@ class PathwayMapperTest {
         assertEquals("IFNA1", eventModel.getFirst());
         assertEquals("bind", eventModel.getRelation());
         assertEquals("IRF7", eventModel.getSecond());
+        assertEquals(List.of("12345", "67890"), eventModel.getPubmedIds());
         assertNull(eventModel.getPosition());
 
         KbObjectCollection kbObj = new KbObjectCollection();
@@ -160,7 +244,7 @@ class PathwayMapperTest {
     @Test
     @DisplayName("Should map DynamicExecutionResult to PathwayInferenceResponseDTO")
     void shouldMapDynamicExecutionResultToResponseDTO() {
-        com.biopatternsg.domain.model.DynamicExecutionResult result = com.biopatternsg.domain.model.DynamicExecutionResult.builder()
+        DynamicExecutionResult result = DynamicExecutionResult.builder()
                 .pipelineId("p-dynamic")
                 .user("user-01")
                 .executionTimeMs(120L)
@@ -171,7 +255,7 @@ class PathwayMapperTest {
                         .build())
                 .build();
 
-        com.biopatternsg.infrastructure.dtos.PathwayInferenceResponseDTO dto = mapper.toResponseDTO(result);
+        PathwayInferenceResponseDTO dto = mapper.toResponseDTO(result);
         assertNotNull(dto);
         assertEquals("SUCCESS", dto.getStatus());
         assertEquals("p-dynamic", dto.getPipelineId());
@@ -199,7 +283,7 @@ class PathwayMapperTest {
                 ))
                 .build();
 
-        com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO dto = mapper.toGraphResponseDTO(graph);
+        PathwayGraphResponseDTO dto = mapper.toGraphResponseDTO(graph);
         assertNotNull(dto);
         assertEquals("p-graph-dto", dto.getPipelineId());
         assertEquals("user-02", dto.getUser());
@@ -382,6 +466,7 @@ class PathwayMapperTest {
         assertEquals(1, page1.getGroups().size());
         assertEquals("C->D", page1.getGroups().get(0).getGroupId());
     }
+
     @Test
     @DisplayName("Should include eventIds and pubmedIds in steps and eventIdCombinations")
     void shouldIncludeEventIdsAndPubmedIds() {

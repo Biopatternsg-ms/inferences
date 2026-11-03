@@ -18,6 +18,7 @@ package com.biopatternsg.domain.port.in;
 import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.DynamicInferenceInput;
+import com.biopatternsg.domain.model.GroupedPathwaysPage;
 import com.biopatternsg.domain.model.PathwayGraph;
 
 import java.util.List;
@@ -37,6 +38,15 @@ public interface InferPathways {
             Integer maxDepth);
     Optional<PathwayGraph> getPathwayGraph(String pipelineId);
     List<BiologicalPathway> getPathways(String pipelineId, String startObject, String endObject, String containsObject, int page, int size);
+    GroupedPathwaysPage getGroupedPathways(
+            String pipelineId,
+            String startObject,
+            String endObject,
+            String containsObject,
+            Integer length,
+            String search,
+            int page,
+            int size);
     long countPathways(String pipelineId);
     long deletePathways(String pipelineId);
     Map<String, List<String>> getPubmedMap(String pipelineId);
