@@ -42,5 +42,8 @@ public class DynamicExecutionResult {
     @Builder.Default
     private List<BiologicalPathway> pathways = new ArrayList<>();
 
+    @Builder.Default
+    private List<GroupedPathway> groupedPathways = new ArrayList<>();
+
     private PathwayGraph graph;
 }

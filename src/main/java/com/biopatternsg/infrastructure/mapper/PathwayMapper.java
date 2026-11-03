@@ -16,7 +16,13 @@
 package com.biopatternsg.infrastructure.mapper;
 
 import com.biopatternsg.domain.model.BiologicalPathway;
+import com.biopatternsg.domain.model.DynamicExecutionResult;
 import com.biopatternsg.domain.model.GraphEdge;
+import com.biopatternsg.domain.model.GroupedPathway;
+import com.biopatternsg.domain.model.GroupedPathwayObject;
+import com.biopatternsg.domain.model.GroupedPathwayStep;
+import com.biopatternsg.domain.model.GroupedPathwayStepEvent;
+import com.biopatternsg.domain.model.GroupedPathwaysPage;
 import com.biopatternsg.domain.model.KbObject;
 import com.biopatternsg.domain.model.PathwayEvent;
 import com.biopatternsg.domain.model.PathwayGraph;
@@ -26,7 +32,15 @@ import com.biopatternsg.infrastructure.dtos.GroupedPathwayObjectDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwayStepDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwayStepEventDTO;
 import com.biopatternsg.infrastructure.dtos.GroupedPathwaysResponseDTO;
+import com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO;
+import com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO;
+import com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO;
+import com.biopatternsg.infrastructure.dtos.PathwayInferenceResponseDTO;
 import com.biopatternsg.infrastructure.mongo.GraphEdgeDocument;
+import com.biopatternsg.infrastructure.mongo.GroupedPathwayCollection;
+import com.biopatternsg.infrastructure.mongo.GroupedPathwayObjectDocument;
+import com.biopatternsg.infrastructure.mongo.GroupedPathwayStepDocument;
+import com.biopatternsg.infrastructure.mongo.GroupedPathwayStepEventDocument;
 import com.biopatternsg.infrastructure.mongo.KbEventCollection;
 import com.biopatternsg.infrastructure.mongo.KbObjectCollection;
 import com.biopatternsg.infrastructure.mongo.PathwayCollection;
@@ -44,6 +58,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 @ApplicationScoped
 public class PathwayMapper {
@@ -101,6 +116,222 @@ public class PathwayMapper {
                 .endObject(entity.getEndObject())
                 .events(events)
                 .objects(objects)
+                .build();
+    }
+
+    public GroupedPathwayCollection toGroupedEntity(GroupedPathway model) {
+        if (model == null) {
+            return null;
+        }
+        GroupedPathwayCollection entity = new GroupedPathwayCollection();
+        if (model.getId() != null && ObjectId.isValid(model.getId())) {
+            entity.id = new ObjectId(model.getId());
+        }
+        entity.setPipelineId(model.getPipelineId());
+        entity.setUser(model.getUser());
+        entity.setGroupId(model.getGroupId());
+        entity.setLength(model.getLength());
+        entity.setStartObject(model.getStartObject());
+        entity.setEndObject(model.getEndObject());
+        entity.setPathwaysCount(model.getPathwaysCount());
+        entity.setRelations(model.getRelations() != null ? new ArrayList<>(model.getRelations()) : new ArrayList<>());
+        entity.setRelationCombinations(model.getRelationCombinations() != null ? new ArrayList<>(model.getRelationCombinations()) : new ArrayList<>());
+        entity.setEventIdCombinations(model.getEventIdCombinations() != null ? new ArrayList<>(model.getEventIdCombinations()) : new ArrayList<>());
+
+        if (model.getObjects() != null) {
+            entity.setObjects(model.getObjects().stream()
+                    .map(this::toGroupedObjectDocument)
+                    .toList());
+        } else {
+            entity.setObjects(new ArrayList<>());
+        }
+
+        if (model.getSteps() != null) {
+            entity.setSteps(model.getSteps().stream()
+                    .map(this::toGroupedStepDocument)
+                    .toList());
+        } else {
+            entity.setSteps(new ArrayList<>());
+        }
+
+        entity.setCreatedAt(model.getCreatedAt() != null ? model.getCreatedAt() : Instant.now());
+        return entity;
+    }
+
+    public GroupedPathway toGroupedModel(GroupedPathwayCollection entity) {
+        if (entity == null) {
+            return null;
+        }
+        List<GroupedPathwayObject> objects = entity.getObjects() != null
+                ? entity.getObjects().stream().map(this::toGroupedObjectModel).toList()
+                : new ArrayList<>();
+
+        List<GroupedPathwayStep> steps = entity.getSteps() != null
+                ? entity.getSteps().stream().map(this::toGroupedStepModel).toList()
+                : new ArrayList<>();
+
+        return GroupedPathway.builder()
+                .id(entity.id != null ? entity.id.toHexString() : null)
+                .pipelineId(entity.getPipelineId())
+                .user(entity.getUser())
+                .groupId(entity.getGroupId())
+                .length(entity.getLength() != null ? entity.getLength() : 0)
+                .startObject(entity.getStartObject())
+                .endObject(entity.getEndObject())
+                .pathwaysCount(entity.getPathwaysCount() != null ? entity.getPathwaysCount() : 0)
+                .objects(objects)
+                .relations(entity.getRelations() != null ? new ArrayList<>(entity.getRelations()) : new ArrayList<>())
+                .steps(steps)
+                .relationCombinations(entity.getRelationCombinations() != null ? new ArrayList<>(entity.getRelationCombinations()) : new ArrayList<>())
+                .eventIdCombinations(entity.getEventIdCombinations() != null ? new ArrayList<>(entity.getEventIdCombinations()) : new ArrayList<>())
+                .createdAt(entity.getCreatedAt())
+                .build();
+    }
+
+    public GroupedPathwayObjectDocument toGroupedObjectDocument(GroupedPathwayObject obj) {
+        if (obj == null) {
+            return null;
+        }
+        return GroupedPathwayObjectDocument.builder()
+                .name(obj.getName())
+                .role(obj.getRole())
+                .position(obj.getPosition())
+                .build();
+    }
+
+    public GroupedPathwayObject toGroupedObjectModel(GroupedPathwayObjectDocument doc) {
+        if (doc == null) {
+            return null;
+        }
+        return GroupedPathwayObject.builder()
+                .name(doc.getName())
+                .role(doc.getRole())
+                .position(doc.getPosition() != null ? doc.getPosition() : 0)
+                .build();
+    }
+
+    public GroupedPathwayStepDocument toGroupedStepDocument(GroupedPathwayStep step) {
+        if (step == null) {
+            return null;
+        }
+        List<GroupedPathwayStepEventDocument> events = step.getEvents() != null
+                ? step.getEvents().stream().map(this::toGroupedStepEventDocument).toList()
+                : new ArrayList<>();
+        return GroupedPathwayStepDocument.builder()
+                .position(step.getPosition())
+                .first(step.getFirst())
+                .second(step.getSecond())
+                .relations(step.getRelations() != null ? new ArrayList<>(step.getRelations()) : new ArrayList<>())
+                .events(events)
+                .build();
+    }
+
+    public GroupedPathwayStep toGroupedStepModel(GroupedPathwayStepDocument doc) {
+        if (doc == null) {
+            return null;
+        }
+        List<GroupedPathwayStepEvent> events = doc.getEvents() != null
+                ? doc.getEvents().stream().map(this::toGroupedStepEventModel).toList()
+                : new ArrayList<>();
+        return GroupedPathwayStep.builder()
+                .position(doc.getPosition() != null ? doc.getPosition() : 0)
+                .first(doc.getFirst())
+                .second(doc.getSecond())
+                .relations(doc.getRelations() != null ? new ArrayList<>(doc.getRelations()) : new ArrayList<>())
+                .events(events)
+                .build();
+    }
+
+    public GroupedPathwayStepEventDocument toGroupedStepEventDocument(GroupedPathwayStepEvent ev) {
+        if (ev == null) {
+            return null;
+        }
+        return GroupedPathwayStepEventDocument.builder()
+                .id(ev.getId())
+                .relation(ev.getRelation())
+                .pubmedIds(ev.getPubmedIds() != null ? new ArrayList<>(ev.getPubmedIds()) : new ArrayList<>())
+                .build();
+    }
+
+    public GroupedPathwayStepEvent toGroupedStepEventModel(GroupedPathwayStepEventDocument doc) {
+        if (doc == null) {
+            return null;
+        }
+        return GroupedPathwayStepEvent.builder()
+                .id(doc.getId())
+                .relation(doc.getRelation())
+                .pubmedIds(doc.getPubmedIds() != null ? new ArrayList<>(doc.getPubmedIds()) : new ArrayList<>())
+                .build();
+    }
+
+    public GroupedPathwayDTO toGroupedPathwayDTO(GroupedPathway model) {
+        if (model == null) {
+            return null;
+        }
+        List<GroupedPathwayObjectDTO> objectsDTO = model.getObjects() != null
+                ? model.getObjects().stream()
+                        .map(o -> GroupedPathwayObjectDTO.builder()
+                                .name(o.getName())
+                                .role(o.getRole())
+                                .position(o.getPosition())
+                                .build())
+                        .toList()
+                : new ArrayList<>();
+
+        List<GroupedPathwayStepDTO> stepsDTO = model.getSteps() != null
+                ? model.getSteps().stream()
+                        .map(s -> GroupedPathwayStepDTO.builder()
+                                .position(s.getPosition())
+                                .first(s.getFirst())
+                                .second(s.getSecond())
+                                .relations(s.getRelations() != null ? new ArrayList<>(s.getRelations()) : new ArrayList<>())
+                                .events(s.getEvents() != null
+                                        ? s.getEvents().stream()
+                                                .map(ev -> GroupedPathwayStepEventDTO.builder()
+                                                        .id(ev.getId())
+                                                        .relation(ev.getRelation())
+                                                        .pubmedIds(ev.getPubmedIds() != null ? new ArrayList<>(ev.getPubmedIds()) : new ArrayList<>())
+                                                        .build())
+                                                .toList()
+                                        : new ArrayList<>())
+                                .build())
+                        .toList()
+                : new ArrayList<>();
+
+        return GroupedPathwayDTO.builder()
+                .groupId(model.getGroupId())
+                .length(model.getLength())
+                .startObject(model.getStartObject())
+                .endObject(model.getEndObject())
+                .pathwaysCount(model.getPathwaysCount())
+                .objects(objectsDTO)
+                .relations(model.getRelations() != null ? new ArrayList<>(model.getRelations()) : new ArrayList<>())
+                .steps(stepsDTO)
+                .relationCombinations(model.getRelationCombinations() != null ? new ArrayList<>(model.getRelationCombinations()) : new ArrayList<>())
+                .eventIdCombinations(model.getEventIdCombinations() != null ? new ArrayList<>(model.getEventIdCombinations()) : new ArrayList<>())
+                .build();
+    }
+
+    public GroupedPathwaysResponseDTO toGroupedPathwaysResponseDTO(GroupedPathwaysPage pageModel) {
+        if (pageModel == null) {
+            return null;
+        }
+        List<GroupedPathwayDTO> groupDTOs = pageModel.getGroups() != null
+                ? pageModel.getGroups().stream().map(this::toGroupedPathwayDTO).toList()
+                : new ArrayList<>();
+
+        List<Integer> lengths = pageModel.getAvailableLengths() != null
+                ? new ArrayList<>(pageModel.getAvailableLengths())
+                : new ArrayList<>();
+
+        return GroupedPathwaysResponseDTO.builder()
+                .pipelineId(pageModel.getPipelineId())
+                .totalRawPathways(pageModel.getTotalRawPathways())
+                .totalGroups((int) pageModel.getTotalGroups())
+                .availableLengths(lengths)
+                .page(pageModel.getPage())
+                .size(pageModel.getSize())
+                .groups(groupDTOs)
                 .build();
     }
 
@@ -232,6 +463,7 @@ public class PathwayMapper {
                 .relation(entity.getRelation())
                 .second(entity.getSecond())
                 .position(null)
+                .pubmedIds(entity.getPubmedIds() != null ? new ArrayList<>(entity.getPubmedIds()) : new ArrayList<>())
                 .build();
     }
 
@@ -248,7 +480,7 @@ public class PathwayMapper {
                 .build();
     }
 
-    public com.biopatternsg.infrastructure.dtos.PathwayInferenceResponseDTO toResponseDTO(com.biopatternsg.domain.model.DynamicExecutionResult result) {
+    public PathwayInferenceResponseDTO toResponseDTO(DynamicExecutionResult result) {
         if (result == null) {
             return null;
         }
@@ -259,7 +491,7 @@ public class PathwayMapper {
                 ? result.getGraph().getEdges().size()
                 : 0;
 
-        return com.biopatternsg.infrastructure.dtos.PathwayInferenceResponseDTO.builder()
+        return PathwayInferenceResponseDTO.builder()
                 .status("SUCCESS")
                 .pipelineId(result.getPipelineId())
                 .user(result.getUser())
@@ -270,19 +502,19 @@ public class PathwayMapper {
                 .build();
     }
 
-    public com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO toGraphResponseDTO(PathwayGraph graph) {
+    public PathwayGraphResponseDTO toGraphResponseDTO(PathwayGraph graph) {
         if (graph == null) {
             return null;
         }
-        List<com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO> nodeDTOs = graph.getNodes() != null
+        List<PathwayGraphNodeDTO> nodeDTOs = graph.getNodes() != null
                 ? graph.getNodes().stream().map(this::toNodeDTO).toList()
                 : new ArrayList<>();
 
-        List<com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO> edgeDTOs = graph.getEdges() != null
+        List<PathwayGraphEdgeDTO> edgeDTOs = graph.getEdges() != null
                 ? graph.getEdges().stream().map(this::toEdgeDTO).toList()
                 : new ArrayList<>();
 
-        return com.biopatternsg.infrastructure.dtos.PathwayGraphResponseDTO.builder()
+        return PathwayGraphResponseDTO.builder()
                 .pipelineId(graph.getPipelineId())
                 .user(graph.getUser())
                 .totalPathways(graph.getTotalPathways())
@@ -292,23 +524,23 @@ public class PathwayMapper {
                 .build();
     }
 
-    public com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO toNodeDTO(PathwayObject node) {
+    public PathwayGraphNodeDTO toNodeDTO(PathwayObject node) {
         if (node == null) {
             return null;
         }
         String rawRole = node.getRole() != null && !node.getRole().isBlank() ? node.getRole() : "protein";
-        return com.biopatternsg.infrastructure.dtos.PathwayGraphNodeDTO.builder()
+        return PathwayGraphNodeDTO.builder()
                 .name(node.getName())
                 .role(rawRole)
                 .type(formatRoleDisplayType(rawRole))
                 .build();
     }
 
-    public com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO toEdgeDTO(GraphEdge edge) {
+    public PathwayGraphEdgeDTO toEdgeDTO(GraphEdge edge) {
         if (edge == null) {
             return null;
         }
-        return com.biopatternsg.infrastructure.dtos.PathwayGraphEdgeDTO.builder()
+        return PathwayGraphEdgeDTO.builder()
                 .first(edge.getFirst())
                 .relation(edge.getRelation())
                 .second(edge.getSecond())
@@ -424,6 +656,13 @@ public class PathwayMapper {
         Map<String, List<String>> safePubmedMap = (eventPubmedMap != null) ? eventPubmedMap : Collections.emptyMap();
         List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides, safePubmedMap);
 
+        Set<Integer> distinctLengths = new TreeSet<>();
+        for (GroupedPathwayDTO g : allGroups) {
+            if (g.getLength() != null) {
+                distinctLengths.add(g.getLength());
+            }
+        }
+
         int totalGroups = allGroups.size();
         List<GroupedPathwayDTO> pagedGroups;
         if (page >= 0 && size > 0) {
@@ -442,6 +681,7 @@ public class PathwayMapper {
                 .pipelineId(pipelineId)
                 .totalRawPathways((long) safePathways.size())
                 .totalGroups(totalGroups)
+                .availableLengths(new ArrayList<>(distinctLengths))
                 .page(Math.max(page, 0))
                 .size(size)
                 .groups(pagedGroups)
@@ -547,14 +787,16 @@ public class PathwayMapper {
                 if (rel != null && !rel.isBlank()) {
                     allRelations.add(rel);
                     StepAccumulator stepAcc = stepAccumulators.get(i);
-                    List<String> pmids = eventPubmedMap.getOrDefault(evId,
-                            eventPubmedMap.getOrDefault(
-                                    (stepAcc.first != null ? stepAcc.first.trim().toLowerCase() : "") + "|" +
-                                    rel.trim().toLowerCase() + "|" +
-                                    (stepAcc.second != null ? stepAcc.second.trim().toLowerCase() : ""),
-                                    List.of()
-                            )
-                    );
+                    List<String> pmids = ev.getPubmedIds() != null && !ev.getPubmedIds().isEmpty()
+                            ? ev.getPubmedIds()
+                            : eventPubmedMap.getOrDefault(evId,
+                                    eventPubmedMap.getOrDefault(
+                                            (stepAcc.first != null ? stepAcc.first.trim().toLowerCase() : "") + "|" +
+                                            rel.trim().toLowerCase() + "|" +
+                                            (stepAcc.second != null ? stepAcc.second.trim().toLowerCase() : ""),
+                                            List.of()
+                                    )
+                            );
                     stepAcc.addEvent(rel, evId, pmids);
                     combination.add(rel);
                     eventIdCombination.add(evId);

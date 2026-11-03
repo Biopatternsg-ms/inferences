@@ -15,7 +15,6 @@
  */
 package com.biopatternsg.infrastructure.adapters.out;
 
-import com.biopatternsg.domain.model.BiologicalPathway;
 import com.biopatternsg.domain.model.PathwayGraph;
 import com.biopatternsg.infrastructure.mapper.PathwayMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -26,10 +25,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,6 +45,24 @@ class PathwayRepositoryAdapterTest {
     void shouldHandleEmptyBatch() {
         assertDoesNotThrow(() -> adapter.savePathwaysBatch(null));
         assertDoesNotThrow(() -> adapter.savePathwaysBatch(Collections.emptyList()));
+    }
+
+    @Test
+    @DisplayName("saveGroupedPathwaysBatch should handle null or empty list gracefully")
+    void shouldHandleEmptyGroupedBatch() {
+        assertDoesNotThrow(() -> adapter.saveGroupedPathwaysBatch(null));
+        assertDoesNotThrow(() -> adapter.saveGroupedPathwaysBatch(Collections.emptyList()));
+    }
+
+    @Test
+    @DisplayName("findGroupedByPipelineId and countGroupedByPipelineId should handle null or blank pipelineId gracefully")
+    void shouldHandleBlankPipelineIdInGroupedQueries() {
+        assertTrue(adapter.findGroupedByPipelineId(null, null, null, null, null, null, 0, 10).isEmpty());
+        assertTrue(adapter.findGroupedByPipelineId("  ", null, null, null, null, null, 0, 10).isEmpty());
+        assertEquals(0L, adapter.countGroupedByPipelineId(null, null, null, null, null, null));
+        assertEquals(0L, adapter.countGroupedByPipelineId("  ", null, null, null, null, null));
+        assertTrue(adapter.findDistinctGroupedLengthsByPipelineId(null).isEmpty());
+        assertTrue(adapter.findDistinctGroupedLengthsByPipelineId(" ").isEmpty());
     }
 
     @Test

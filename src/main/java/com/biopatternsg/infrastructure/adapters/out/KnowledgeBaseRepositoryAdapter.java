@@ -59,6 +59,7 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
                                     .first(e.first())
                                     .relation(e.relation())
                                     .second(e.second())
+                                    .pubmedIds(e.pubmedIds() != null ? e.pubmedIds() : List.of())
                                     .build())
                             .toList();
                 }
@@ -128,6 +129,7 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
                                     .first(e.first())
                                     .relation(e.relation())
                                     .second(e.second())
+                                    .pubmedIds(e.pubmedIds() != null ? e.pubmedIds() : List.of())
                                     .build())
                             .toList();
                 }

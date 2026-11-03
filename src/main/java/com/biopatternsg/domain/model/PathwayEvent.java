@@ -23,6 +23,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.util.List;
+
 @Getter
 @Setter
 @Builder
@@ -36,13 +38,18 @@ public class PathwayEvent {
     private String relation;
     private String second;
     private Integer position;
+    private List<String> pubmedIds;
+
+    public PathwayEvent(String id, String first, String relation, String second, Integer position) {
+        this(id, first, relation, second, position, null);
+    }
 
     public PathwayEvent(String first, String relation, String second) {
-        this(null, first, relation, second, null);
+        this(null, first, relation, second, null, null);
     }
 
     public PathwayEvent(String first, String relation, String second, Integer position) {
-        this(null, first, relation, second, position);
+        this(null, first, relation, second, position, null);
     }
 
     public String getSubject() {
