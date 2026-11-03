@@ -1672,7 +1672,7 @@ run :-
             return List.of();
         }
 
-        Map<String, DomainGroupAccumulator> groupsMap = new LinkedHashMap<>();
+        Map<String, GroupedPathway> groupsMap = new LinkedHashMap<>();
         Instant createdAt = Instant.now();
 
         for (BiologicalPathway pathway : pathways) {
@@ -1723,17 +1723,128 @@ run :-
                     ? String.join("->", orderedObjectNames)
                     : keyBuilder.substring(keyBuilder.indexOf("|") + 1);
 
-            DomainGroupAccumulator acc = groupsMap.computeIfAbsent(groupKey, k ->
-                    new DomainGroupAccumulator(pipelineId, user, groupId, length, orderedObjectNames, events, eventPubmedMap, createdAt));
+            GroupedPathway group = groupsMap.computeIfAbsent(groupKey, k -> {
+                List<GroupedPathwayObject> objects = new ArrayList<>(orderedObjectNames.size());
+                for (int i = 0; i < orderedObjectNames.size(); i++) {
+                    String name = orderedObjectNames.get(i);
+                    String role = (roleOverrides != null && roleOverrides.containsKey(name))
+                            ? roleOverrides.get(name)
+                            : pathwayObjectRoles.getOrDefault(name, "protein");
+                    objects.add(GroupedPathwayObject.builder()
+                            .name(name)
+                            .role(role)
+                            .position(i + 1)
+                            .build());
+                }
 
-            acc.addPathway(events, pathwayObjectRoles, roleOverrides);
+                List<GroupedPathwayStep> steps = new ArrayList<>(length);
+                for (int i = 0; i < length; i++) {
+                    PathwayEvent ev = events.get(i);
+                    steps.add(GroupedPathwayStep.builder()
+                            .position(i + 1)
+                            .first(ev.getFirst())
+                            .second(ev.getSecond())
+                            .relations(new ArrayList<>())
+                            .events(new ArrayList<>())
+                            .build());
+                }
+
+                return GroupedPathway.builder()
+                        .pipelineId(pipelineId)
+                        .user(user)
+                        .groupId(groupId)
+                        .length(length)
+                        .startObject(events.get(0).getFirst())
+                        .endObject(events.get(length - 1).getSecond())
+                        .pathwaysCount(0)
+                        .objects(objects)
+                        .relations(new ArrayList<>())
+                        .steps(steps)
+                        .relationCombinations(new ArrayList<>())
+                        .eventIdCombinations(new ArrayList<>())
+                        .createdAt(createdAt)
+                        .build();
+            });
+
+            group.setPathwaysCount(group.getPathwaysCount() + 1);
+
+            for (GroupedPathwayObject obj : group.getObjects()) {
+                if (roleOverrides != null && roleOverrides.containsKey(obj.getName())) {
+                    obj.setRole(roleOverrides.get(obj.getName()));
+                }
+            }
+
+            List<String> combination = new ArrayList<>(length);
+            List<String> eventIdCombination = new ArrayList<>(length);
+
+            for (int i = 0; i < length; i++) {
+                PathwayEvent ev = events.get(i);
+                String rel = ev.getRelation();
+                String evId = ev.getId() != null ? ev.getId() : "";
+                GroupedPathwayStep step = group.getSteps().get(i);
+
+                if (rel != null && !rel.isBlank()) {
+                    if (!group.getRelations().contains(rel)) {
+                        group.getRelations().add(rel);
+                    }
+                    if (!step.getRelations().contains(rel)) {
+                        step.getRelations().add(rel);
+                    }
+
+                    List<String> pmids = ev.getPubmedIds() != null && !ev.getPubmedIds().isEmpty()
+                            ? ev.getPubmedIds()
+                            : (eventPubmedMap != null
+                                    ? eventPubmedMap.getOrDefault(evId,
+                                            eventPubmedMap.getOrDefault(
+                                                    (step.getFirst() != null ? step.getFirst().trim().toLowerCase() : "") + "|" +
+                                                    rel.trim().toLowerCase() + "|" +
+                                                    (step.getSecond() != null ? step.getSecond().trim().toLowerCase() : ""),
+                                                    List.of()))
+                                    : List.of());
+
+                    GroupedPathwayStepEvent existingEvent = null;
+                    for (GroupedPathwayStepEvent se : step.getEvents()) {
+                        if (rel.equals(se.getRelation())) {
+                            existingEvent = se;
+                            break;
+                        }
+                    }
+
+                    if (existingEvent == null) {
+                        step.getEvents().add(GroupedPathwayStepEvent.builder()
+                                .id(evId)
+                                .relation(rel)
+                                .pubmedIds(pmids != null ? new ArrayList<>(pmids) : new ArrayList<>())
+                                .build());
+                    } else {
+                        if ((existingEvent.getId() == null || existingEvent.getId().isBlank()) && !evId.isBlank()) {
+                            existingEvent.setId(evId);
+                        }
+                        if (pmids != null && !pmids.isEmpty()) {
+                            for (String pmid : pmids) {
+                                if (!existingEvent.getPubmedIds().contains(pmid)) {
+                                    existingEvent.getPubmedIds().add(pmid);
+                                }
+                            }
+                        }
+                    }
+                    combination.add(rel);
+                    eventIdCombination.add(evId);
+                } else {
+                    combination.add("");
+                    eventIdCombination.add(evId);
+                }
+            }
+
+            if (!group.getRelationCombinations().contains(combination)) {
+                group.getRelationCombinations().add(combination);
+            }
+            if (!group.getEventIdCombinations().contains(eventIdCombination)) {
+                group.getEventIdCombinations().add(eventIdCombination);
+            }
         }
 
-        List<GroupedPathway> result = new ArrayList<>(groupsMap.size());
-        for (DomainGroupAccumulator acc : groupsMap.values()) {
-            result.add(acc.toDomainModel());
-        }
-        return result;
+        return new ArrayList<>(groupsMap.values());
     }
 
     private static void mergePubmedIds(Map<String, List<String>> map, String key, List<String> newIds) {
@@ -1744,175 +1855,6 @@ run :-
         for (String id : newIds) {
             if (id != null && !id.isBlank() && !existing.contains(id)) {
                 existing.add(id);
-            }
-        }
-    }
-
-    private static final class DomainGroupAccumulator {
-        private final String pipelineId;
-        private final String user;
-        private final String groupId;
-        private final int length;
-        private final String startObject;
-        private final String endObject;
-        private final List<String> orderedObjectNames;
-        private final Map<String, List<String>> eventPubmedMap;
-        private final Instant createdAt;
-        private final Map<String, String> objectRoles = new LinkedHashMap<>();
-        private final Set<String> allRelations = new LinkedHashSet<>();
-        private final List<DomainStepAccumulator> stepAccumulators;
-        private final Set<List<String>> relationCombinations = new LinkedHashSet<>();
-        private final Set<List<String>> eventIdCombinations = new LinkedHashSet<>();
-        private int pathwaysCount = 0;
-
-        private DomainGroupAccumulator(
-                String pipelineId,
-                String user,
-                String groupId,
-                int length,
-                List<String> orderedObjectNames,
-                List<PathwayEvent> templateEvents,
-                Map<String, List<String>> eventPubmedMap,
-                Instant createdAt) {
-            this.pipelineId = pipelineId;
-            this.user = user;
-            this.groupId = groupId;
-            this.length = length;
-            this.orderedObjectNames = orderedObjectNames;
-            this.eventPubmedMap = eventPubmedMap != null ? eventPubmedMap : Collections.emptyMap();
-            this.createdAt = createdAt;
-            this.startObject = templateEvents.get(0).getFirst();
-            this.endObject = templateEvents.get(templateEvents.size() - 1).getSecond();
-            this.stepAccumulators = new ArrayList<>(length);
-            for (int i = 0; i < length; i++) {
-                PathwayEvent ev = templateEvents.get(i);
-                this.stepAccumulators.add(new DomainStepAccumulator(i + 1, ev.getFirst(), ev.getSecond()));
-            }
-        }
-
-        private void addPathway(
-                List<PathwayEvent> events,
-                Map<String, String> pathwayObjectRoles,
-                Map<String, String> roleOverrides) {
-            this.pathwaysCount++;
-
-            for (String objName : orderedObjectNames) {
-                if (roleOverrides != null && roleOverrides.containsKey(objName)) {
-                    objectRoles.put(objName, roleOverrides.get(objName));
-                } else if (!objectRoles.containsKey(objName)) {
-                    String role = pathwayObjectRoles.getOrDefault(objName, "protein");
-                    objectRoles.put(objName, role);
-                }
-            }
-
-            List<String> combination = new ArrayList<>(events.size());
-            List<String> eventIdCombination = new ArrayList<>(events.size());
-
-            for (int i = 0; i < events.size(); i++) {
-                PathwayEvent ev = events.get(i);
-                String rel = ev.getRelation();
-                String evId = ev.getId() != null ? ev.getId() : "";
-                if (rel != null && !rel.isBlank()) {
-                    allRelations.add(rel);
-                    DomainStepAccumulator stepAcc = stepAccumulators.get(i);
-                    List<String> pmids = ev.getPubmedIds() != null && !ev.getPubmedIds().isEmpty()
-                            ? ev.getPubmedIds()
-                            : eventPubmedMap.getOrDefault(evId,
-                                    eventPubmedMap.getOrDefault(
-                                            (stepAcc.first != null ? stepAcc.first.trim().toLowerCase() : "") + "|" +
-                                            rel.trim().toLowerCase() + "|" +
-                                            (stepAcc.second != null ? stepAcc.second.trim().toLowerCase() : ""),
-                                            List.of()
-                                    )
-                            );
-                    stepAcc.addEvent(rel, evId, pmids);
-                    combination.add(rel);
-                    eventIdCombination.add(evId);
-                } else {
-                    combination.add("");
-                    eventIdCombination.add(evId);
-                }
-            }
-            relationCombinations.add(combination);
-            eventIdCombinations.add(eventIdCombination);
-        }
-
-        private GroupedPathway toDomainModel() {
-            List<GroupedPathwayObject> objectsModel = new ArrayList<>(orderedObjectNames.size());
-            for (int i = 0; i < orderedObjectNames.size(); i++) {
-                String name = orderedObjectNames.get(i);
-                String role = objectRoles.getOrDefault(name, "protein");
-                objectsModel.add(GroupedPathwayObject.builder()
-                        .name(name)
-                        .role(role)
-                        .position(i + 1)
-                        .build());
-            }
-
-            List<GroupedPathwayStep> stepsModel = new ArrayList<>(stepAccumulators.size());
-            for (DomainStepAccumulator stepAcc : stepAccumulators) {
-                stepsModel.add(GroupedPathwayStep.builder()
-                        .position(stepAcc.position)
-                        .first(stepAcc.first)
-                        .second(stepAcc.second)
-                        .relations(new ArrayList<>(stepAcc.relations))
-                        .events(new ArrayList<>(stepAcc.eventsByRelation.values()))
-                        .build());
-            }
-
-            return GroupedPathway.builder()
-                    .pipelineId(pipelineId)
-                    .user(user)
-                    .groupId(groupId)
-                    .length(length)
-                    .startObject(startObject)
-                    .endObject(endObject)
-                    .pathwaysCount(pathwaysCount)
-                    .objects(objectsModel)
-                    .relations(new ArrayList<>(allRelations))
-                    .steps(stepsModel)
-                    .relationCombinations(new ArrayList<>(relationCombinations))
-                    .eventIdCombinations(new ArrayList<>(eventIdCombinations))
-                    .createdAt(createdAt)
-                    .build();
-        }
-    }
-
-    private static final class DomainStepAccumulator {
-        private final int position;
-        private final String first;
-        private final String second;
-        private final Set<String> relations = new LinkedHashSet<>();
-        private final Map<String, GroupedPathwayStepEvent> eventsByRelation = new LinkedHashMap<>();
-
-        private DomainStepAccumulator(int position, String first, String second) {
-            this.position = position;
-            this.first = first;
-            this.second = second;
-        }
-
-        private void addEvent(String relation, String eventId, List<String> pubmedIds) {
-            if (relation != null && !relation.isBlank()) {
-                relations.add(relation);
-                GroupedPathwayStepEvent existing = eventsByRelation.get(relation);
-                if (existing == null) {
-                    eventsByRelation.put(relation, GroupedPathwayStepEvent.builder()
-                            .id(eventId)
-                            .relation(relation)
-                            .pubmedIds(pubmedIds != null ? new ArrayList<>(pubmedIds) : new ArrayList<>())
-                            .build());
-                } else {
-                    if ((existing.getId() == null || existing.getId().isBlank()) && eventId != null && !eventId.isBlank()) {
-                        existing.setId(eventId);
-                    }
-                    if (pubmedIds != null && !pubmedIds.isEmpty()) {
-                        for (String pmid : pubmedIds) {
-                            if (!existing.getPubmedIds().contains(pmid)) {
-                                existing.getPubmedIds().add(pmid);
-                            }
-                        }
-                    }
-                }
             }
         }
     }
