@@ -37,6 +37,8 @@ public class GroupedPathwaysPage {
     private long totalRawPathways;
     private long totalGroups;
     private List<Integer> availableLengths;
+    private List<String> availableStartObjects;
+    private List<String> availableEndObjects;
     private int page;
     private int size;
     private List<GroupedPathway> groups;

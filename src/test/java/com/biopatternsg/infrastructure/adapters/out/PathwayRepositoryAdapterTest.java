@@ -64,6 +64,10 @@ class PathwayRepositoryAdapterTest {
         assertEquals(0L, adapter.countGroupedByPipelineId("  ", null, null, null, null, null, null));
         assertTrue(adapter.findDistinctGroupedLengthsByPipelineId(null).isEmpty());
         assertTrue(adapter.findDistinctGroupedLengthsByPipelineId(" ").isEmpty());
+        assertTrue(adapter.findDistinctGroupedStartObjectsByPipelineId(null).isEmpty());
+        assertTrue(adapter.findDistinctGroupedStartObjectsByPipelineId(" ").isEmpty());
+        assertTrue(adapter.findDistinctGroupedEndObjectsByPipelineId(null).isEmpty());
+        assertTrue(adapter.findDistinctGroupedEndObjectsByPipelineId(" ").isEmpty());
         assertFalse(adapter.updateGroupedPathwayFavorite(null, "grp1", true));
         assertFalse(adapter.updateGroupedPathwayFavorite("pipe1", null, true));
         assertFalse(adapter.updateGroupedPathwayFavorite("   ", "grp1", true));

@@ -327,11 +327,20 @@ public class PathwayMapper {
                 ? new ArrayList<>(pageModel.getAvailableLengths())
                 : new ArrayList<>();
 
+        List<String> startObjects = pageModel.getAvailableStartObjects() != null
+                ? new ArrayList<>(pageModel.getAvailableStartObjects())
+                : new ArrayList<>();
+        List<String> endObjects = pageModel.getAvailableEndObjects() != null
+                ? new ArrayList<>(pageModel.getAvailableEndObjects())
+                : new ArrayList<>();
+
         return GroupedPathwaysResponseDTO.builder()
                 .pipelineId(pageModel.getPipelineId())
                 .totalRawPathways(pageModel.getTotalRawPathways())
                 .totalGroups((int) pageModel.getTotalGroups())
                 .availableLengths(lengths)
+                .availableStartObjects(startObjects)
+                .availableEndObjects(endObjects)
                 .page(pageModel.getPage())
                 .size(pageModel.getSize())
                 .groups(groupDTOs)
@@ -660,9 +669,17 @@ public class PathwayMapper {
         List<GroupedPathwayDTO> allGroups = groupPathways(safePathways, roleOverrides, safePubmedMap);
 
         Set<Integer> distinctLengths = new TreeSet<>();
+        Set<String> distinctStartObjects = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        Set<String> distinctEndObjects = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         for (GroupedPathwayDTO g : allGroups) {
             if (g.getLength() != null) {
                 distinctLengths.add(g.getLength());
+            }
+            if (g.getStartObject() != null) {
+                distinctStartObjects.add(g.getStartObject());
+            }
+            if (g.getEndObject() != null) {
+                distinctEndObjects.add(g.getEndObject());
             }
         }
 
@@ -685,6 +702,8 @@ public class PathwayMapper {
                 .totalRawPathways((long) safePathways.size())
                 .totalGroups(totalGroups)
                 .availableLengths(new ArrayList<>(distinctLengths))
+                .availableStartObjects(new ArrayList<>(distinctStartObjects))
+                .availableEndObjects(new ArrayList<>(distinctEndObjects))
                 .page(Math.max(page, 0))
                 .size(size)
                 .groups(pagedGroups)
