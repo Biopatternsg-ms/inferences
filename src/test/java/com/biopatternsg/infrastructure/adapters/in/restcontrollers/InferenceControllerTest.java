@@ -432,6 +432,8 @@ class InferenceControllerTest {
         when(pathwayRepository.countByPipelineId(pipeId)).thenReturn(2L);
         when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any())).thenReturn(1L);
         when(pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipeId)).thenReturn(List.of(2));
+        when(pathwayRepository.findDistinctGroupedStartObjectsByPipelineId(pipeId)).thenReturn(List.of("A"));
+        when(pathwayRepository.findDistinctGroupedEndObjectsByPipelineId(pipeId)).thenReturn(List.of("C"));
         when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(List.of(g1));
 
@@ -444,6 +446,10 @@ class InferenceControllerTest {
                 .body("totalGroups", equalTo(1))
                 .body("availableLengths", hasSize(1))
                 .body("availableLengths[0]", equalTo(2))
+                .body("availableStartObjects", hasSize(1))
+                .body("availableStartObjects[0]", equalTo("A"))
+                .body("availableEndObjects", hasSize(1))
+                .body("availableEndObjects[0]", equalTo("C"))
                 .body("groups[0].groupId", equalTo("A->B->C"))
                 .body("groups[0].pathwaysCount", equalTo(2))
                 .body("groups[0].steps", hasSize(2));
@@ -456,6 +462,8 @@ class InferenceControllerTest {
         when(pathwayRepository.countByPipelineId(pipeId)).thenReturn(0L);
         when(pathwayRepository.countGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any())).thenReturn(0L);
         when(pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipeId)).thenReturn(Collections.emptyList());
+        when(pathwayRepository.findDistinctGroupedStartObjectsByPipelineId(pipeId)).thenReturn(Collections.emptyList());
+        when(pathwayRepository.findDistinctGroupedEndObjectsByPipelineId(pipeId)).thenReturn(Collections.emptyList());
         when(pathwayRepository.findGroupedByPipelineId(eq(pipeId), any(), any(), any(), any(), any(), any(), anyInt(), anyInt()))
                 .thenReturn(Collections.emptyList());
 

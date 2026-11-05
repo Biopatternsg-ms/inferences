@@ -47,6 +47,8 @@ public interface PathwayRepository {
             String search,
             Boolean favorite);
     List<Integer> findDistinctGroupedLengthsByPipelineId(String pipelineId);
+    List<String> findDistinctGroupedStartObjectsByPipelineId(String pipelineId);
+    List<String> findDistinctGroupedEndObjectsByPipelineId(String pipelineId);
     boolean updateGroupedPathwayFavorite(String pipelineId, String groupId, boolean favorite);
     long countByPipelineId(String pipelineId);
     long deleteByPipelineId(String pipelineId);

@@ -1561,6 +1561,8 @@ run :-
                     .totalRawPathways(0L)
                     .totalGroups(0L)
                     .availableLengths(List.of())
+                    .availableStartObjects(List.of())
+                    .availableEndObjects(List.of())
                     .page(Math.max(page, 0))
                     .size(size)
                     .groups(List.of())
@@ -1575,6 +1577,8 @@ run :-
         List<GroupedPathway> groups = pathwayRepository.findGroupedByPipelineId(
                 pipelineId, startObject, endObject, containsObject, length, search, favorite, page, size);
         List<Integer> availableLengths = pathwayRepository.findDistinctGroupedLengthsByPipelineId(pipelineId);
+        List<String> availableStartObjects = pathwayRepository.findDistinctGroupedStartObjectsByPipelineId(pipelineId);
+        List<String> availableEndObjects = pathwayRepository.findDistinctGroupedEndObjectsByPipelineId(pipelineId);
         long totalRawPathways = pathwayRepository.countByPipelineId(pipelineId);
 
         enrichGroupedPathwayObjectsRoles(groups, resolveConfiguredRoleMap(pipelineId));
@@ -1584,6 +1588,8 @@ run :-
                 .totalRawPathways(totalRawPathways)
                 .totalGroups(totalGroups)
                 .availableLengths(availableLengths)
+                .availableStartObjects(availableStartObjects)
+                .availableEndObjects(availableEndObjects)
                 .page(Math.max(page, 0))
                 .size(size)
                 .groups(groups)

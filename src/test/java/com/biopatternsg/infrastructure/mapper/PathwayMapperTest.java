@@ -161,6 +161,8 @@ class PathwayMapperTest {
                 .totalRawPathways(10L)
                 .totalGroups(1L)
                 .availableLengths(List.of(2, 3))
+                .availableStartObjects(List.of("A"))
+                .availableEndObjects(List.of("C"))
                 .page(0)
                 .size(20)
                 .groups(List.of(back))
@@ -172,6 +174,8 @@ class PathwayMapperTest {
         assertEquals(10L, pageDTO.getTotalRawPathways());
         assertEquals(1, pageDTO.getTotalGroups());
         assertEquals(List.of(2, 3), pageDTO.getAvailableLengths());
+        assertEquals(List.of("A"), pageDTO.getAvailableStartObjects());
+        assertEquals(List.of("C"), pageDTO.getAvailableEndObjects());
         assertEquals(1, pageDTO.getGroups().size());
         assertEquals("A->B->C", pageDTO.getGroups().get(0).getGroupId());
         assertEquals(List.of("99999"), pageDTO.getGroups().get(0).getSteps().get(0).getEvents().get(0).getPubmedIds());

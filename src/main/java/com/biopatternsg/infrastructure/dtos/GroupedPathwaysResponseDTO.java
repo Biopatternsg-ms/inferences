@@ -44,5 +44,11 @@ public class GroupedPathwaysResponseDTO {
     private List<Integer> availableLengths = new ArrayList<>();
 
     @Builder.Default
+    private List<String> availableStartObjects = new ArrayList<>();
+
+    @Builder.Default
+    private List<String> availableEndObjects = new ArrayList<>();
+
+    @Builder.Default
     private List<GroupedPathwayDTO> groups = new ArrayList<>();
 }

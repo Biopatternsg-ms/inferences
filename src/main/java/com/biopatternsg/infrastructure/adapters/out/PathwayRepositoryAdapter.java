@@ -222,6 +222,42 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
     }
 
     @Override
+    public List<String> findDistinctGroupedStartObjectsByPipelineId(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> objects = new ArrayList<>();
+            GroupedPathwayCollection.mongoCollection()
+                    .distinct("startObject", new Document("pipelineId", pipelineId), String.class)
+                    .into(objects);
+            objects.sort(String.CASE_INSENSITIVE_ORDER);
+            return objects;
+        } catch (Exception e) {
+            log.warn("Could not query distinct grouped pathway start objects for pipelineId {}: {}", pipelineId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<String> findDistinctGroupedEndObjectsByPipelineId(String pipelineId) {
+        if (pipelineId == null || pipelineId.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> objects = new ArrayList<>();
+            GroupedPathwayCollection.mongoCollection()
+                    .distinct("endObject", new Document("pipelineId", pipelineId), String.class)
+                    .into(objects);
+            objects.sort(String.CASE_INSENSITIVE_ORDER);
+            return objects;
+        } catch (Exception e) {
+            log.warn("Could not query distinct grouped pathway end objects for pipelineId {}: {}", pipelineId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    @Override
     public boolean updateGroupedPathwayFavorite(String pipelineId, String groupId, boolean favorite) {
         if (pipelineId == null || pipelineId.isBlank() || groupId == null || groupId.isBlank()) {
             return false;
@@ -249,10 +285,10 @@ public class PathwayRepositoryAdapter implements PathwayRepository, PanacheMongo
             query.append("favorite", true);
         }
         if (startObject != null && !startObject.isBlank()) {
-            query.append("startObject", startObject);
+            query.append("startObject", startObject.trim());
         }
         if (endObject != null && !endObject.isBlank()) {
-            query.append("endObject", endObject);
+            query.append("endObject", endObject.trim());
         }
         if (containsObject != null && !containsObject.isBlank()) {
             query.append("objects.name", containsObject);
